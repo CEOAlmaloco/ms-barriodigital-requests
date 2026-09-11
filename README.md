@@ -32,6 +32,11 @@ curl http://localhost:8081/api/requests/<id>
 curl "http://localhost:8081/api/requests?status=INGRESADO"
 ```
 
+## Secretos (EP1-19 / EP1-21)
+
+`.gitignore` ignora `target/`, `.env`, wallets y `application-local.yml`.  
+Copiá `.env.example` → `.env` en local; **nunca** subas passwords ni el wallet.
+
 ## Qué sigue
 
 - Conectar Oracle sin secretos en git (EP1-21)
