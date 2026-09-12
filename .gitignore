@@ -1,0 +1,40 @@
+# === Build Maven ===
+target/
+!.mvn/wrapper/maven-wrapper.jar
+!.mvn/wrapper/maven-wrapper.properties
+
+# === IDE ===
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*.swo
+
+# === Compilados / logs ===
+*.class
+*.jar
+*.war
+*.ear
+*.log
+hs_err_pid*
+
+# === Secretos y config local (EP1-19 / EP1-21) ===
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.jks
+*.key
+wallet/
+**/Wallet_*/
+application-local.yml
+application-local.yaml
+application-secret.yml
+
+# === OS ===
+.DS_Store
+Thumbs.db
+desktop.ini
