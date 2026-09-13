@@ -2,6 +2,7 @@ package cl.duoc.barriodigital.requests.web;
 
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
+import cl.duoc.barriodigital.requests.service.RequestService;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -13,42 +14,32 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Persistencia en memoria para smoke test del API.
- * EP1-21 ya conecta el pool Oracle; EP1-14 mueve este CRUD a la base.
+ * CRUD de trámites persistido en Oracle Autonomous (EP1-14).
  */
 @RestController
 @RequestMapping("/api/requests")
 public class RequestController {
 
-    private final Map<String, MunicipalRequest> store = new ConcurrentHashMap<>();
+    private final RequestService requestService;
+
+    public RequestController(RequestService requestService) {
+        this.requestService = requestService;
+    }
 
     @PostMapping
     public ResponseEntity<MunicipalRequest> create(@Valid @RequestBody CreateRequestDto body) {
-        MunicipalRequest created = new MunicipalRequest(
-                body.title(),
-                body.description(),
-                body.procedureType()
-        );
-        store.put(created.getId(), created);
+        MunicipalRequest created = requestService.create(body);
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
     @GetMapping("/{id}")
     public MunicipalRequest getById(@PathVariable String id) {
-        MunicipalRequest found = store.get(id);
-        if (found == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado");
-        }
-        return found;
+        return requestService.getById(id);
     }
 
     @GetMapping
@@ -57,19 +48,6 @@ public class RequestController {
             @RequestParam(required = false) Instant from,
             @RequestParam(required = false) Instant to
     ) {
-        List<MunicipalRequest> result = new ArrayList<>();
-        for (MunicipalRequest request : store.values()) {
-            if (status != null && request.getStatus() != status) {
-                continue;
-            }
-            if (from != null && request.getCreatedAt().isBefore(from)) {
-                continue;
-            }
-            if (to != null && request.getCreatedAt().isAfter(to)) {
-                continue;
-            }
-            result.add(request);
-        }
-        return result;
+        return requestService.list(status, from, to);
     }
 }
