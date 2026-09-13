@@ -106,8 +106,28 @@ Colección Postman: `postman/EP1-14-requests.postman_collection.json`.
 Para evidenciar en Oracle:  
 `SELECT id, title, address, solicitante_id, status, created_at FROM municipal_requests ORDER BY created_at DESC;`
 
+## Docker (EP1-24)
+
+La imagen **no** lleva wallet ni `.env` adentro: se montan por volumen y variables.
+
+```powershell
+# Build
+docker build -t bd-requests .
+
+# Run (ajusta la ruta del wallet en tu máquina)
+docker run --rm -p 8081:8081 `
+  -e ORACLE_URL="jdbc:oracle:thin:@barriodig_low?TNS_ADMIN=/wallet" `
+  -e ORACLE_USER=barriodigital `
+  -e ORACLE_PASSWORD=******** `
+  -e ORACLE_WALLET_DIR=/wallet `
+  -v "C:/ruta/a/Wallet_BARRIODIG:/wallet:ro" `
+  bd-requests
+```
+
+Health: `http://localhost:8081/actuator/health`  
+Orquestación con BFF: repo `barriodigital-infra` → carpeta `apps/`.
+
 ## Qué sigue
 
-- Que el BFF llame a requests (EP1-15)
 - Cambio de estado y reglas de EN_TERRENO (EP2)
 - Publicar a Rabbit al admitir un trámite (EP3)
