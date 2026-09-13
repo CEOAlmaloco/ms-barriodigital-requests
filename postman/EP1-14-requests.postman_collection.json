@@ -1,0 +1,83 @@
+{
+  "info": {
+    "name": "BarrioDigital requests EP1-14",
+    "description": "CRUD de trámites contra ms-barriodigital-requests (Oracle). Puerto 8081.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Crear trámite",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"title\": \"Bache en calle Los Ulmos\",\n  \"description\": \"Hueco frente al 123\",\n  \"procedureType\": \"bache\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8081/api/requests",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "requests"]
+        }
+      }
+    },
+    {
+      "name": "Listar trámites",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8081/api/requests",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "requests"]
+        }
+      }
+    },
+    {
+      "name": "Listar por estado INGRESADO",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8081/api/requests?status=INGRESADO",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "requests"],
+          "query": [
+            {
+              "key": "status",
+              "value": "INGRESADO"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Obtener por id",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8081/api/requests/{{requestId}}",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "requests", "{{requestId}}"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "requestId",
+      "value": "reemplazar-con-uuid"
+    }
+  ]
+}

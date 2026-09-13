@@ -22,8 +22,9 @@ spring:
   jpa:
     open-in-view: false
     hibernate:
-      # EP1-14 crea el esquema; acá solo validamos que el pool conecta.
-      ddl-auto: none
+      # Crea/actualiza municipal_requests en Oracle (EP1-14). Ver también db/schema.sql.
+      ddl-auto: update
+    show-sql: false
     properties:
       hibernate:
         jdbc:
