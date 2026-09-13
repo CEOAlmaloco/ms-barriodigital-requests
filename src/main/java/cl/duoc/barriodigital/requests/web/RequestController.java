@@ -22,8 +22,8 @@ import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Persistencia en memoria SOLO para el primer commit / smoke test.
- * EP1-21 y EP1-14 reemplazan esto por Oracle cloud.
+ * Persistencia en memoria para smoke test del API.
+ * EP1-21 ya conecta el pool Oracle; EP1-14 mueve este CRUD a la base.
  */
 @RestController
 @RequestMapping("/api/requests")
