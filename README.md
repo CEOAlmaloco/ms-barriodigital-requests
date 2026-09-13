@@ -63,28 +63,48 @@ Al arrancar, Hibernate crea o actualiza la tabla `municipal_requests` (`ddl-auto
 
 ## Endpoints (persistidos en Oracle — EP1-14)
 
-Alta en estado `INGRESADO`. Listado con filtros opcionales `status`, `from`, `to` (ISO-8601).
+Contrato alineado con el formulario del Vecino (tipo + descripción + dirección):
+
+| Campo | Origen |
+|-------|--------|
+| `description`, `procedureType`, `address` | Body del POST |
+| `title` | **Autogenerado** (`{etiqueta} — {dirección}`). No va en el body |
+| `solicitanteId` | Header `X-User-Id` (oid/sub del JWT vía BFF). **Nunca** del body |
+| Roles | Header `X-User-Roles` (ej. `Vecino` o `Funcionario`) |
+
+Códigos de `procedureType` (el front manda el **código**, no el label):  
+`bache`, `alumbrado`, `basura`, `agua`, `ruido`, `otro`  
+Catálogo: `GET /api/requests/meta/procedure-types`
+
+Filtros de listado: `status`, `from`, `to` como **fecha** `yyyy-MM-dd` (sirve para mat-datepicker).  
+Vecino: el servidor fuerza `solicitanteId = X-User-Id`. Funcionario/Admin/Auditor: ven todos.
 
 ```powershell
-# Crear
+# Crear (como Vecino)
 curl -X POST http://localhost:8081/api/requests `
   -H "Content-Type: application/json" `
-  -d "{\"title\":\"Bache en calle Los Ulmos\",\"description\":\"Hueco frente al 123\",\"procedureType\":\"bache\"}"
+  -H "X-User-Id: oid-de-prueba" `
+  -H "X-User-Roles: Vecino" `
+  -d "{\"description\":\"Hueco frente al 123\",\"procedureType\":\"bache\",\"address\":\"Plaza Los Heroes\"}"
 
-# Listar
-curl http://localhost:8081/api/requests
+# Listar (fecha simple)
+curl "http://localhost:8081/api/requests?status=INGRESADO&from=2026-09-01&to=2026-09-13" `
+  -H "X-User-Id: oid-de-prueba" `
+  -H "X-User-Roles: Vecino"
 
-# Por id (reemplaza el UUID)
-curl http://localhost:8081/api/requests/<id>
-
-# Filtro por estado
-curl "http://localhost:8081/api/requests?status=INGRESADO"
+# Por id
+curl http://localhost:8081/api/requests/<id> `
+  -H "X-User-Id: oid-de-prueba" `
+  -H "X-User-Roles: Vecino"
 ```
+
+Si la tabla ya tenía filas viejas sin `address`/`solicitante_id`, vaciala una vez en SQL:  
+`DELETE FROM municipal_requests;` (o drop + recrear). Hibernate agrega las columnas con `ddl-auto=update`.
 
 Colección Postman: `postman/EP1-14-requests.postman_collection.json`.
 
-Para evidenciar en Oracle Cloud: Database Actions → SQL →  
-`SELECT id, title, status, created_at FROM municipal_requests ORDER BY created_at DESC;`
+Para evidenciar en Oracle:  
+`SELECT id, title, address, solicitante_id, status, created_at FROM municipal_requests ORDER BY created_at DESC;`
 
 ## Qué sigue
 

@@ -16,11 +16,13 @@ public interface MunicipalRequestRepository extends JpaRepository<MunicipalReque
             WHERE (:status IS NULL OR r.status = :status)
               AND (:from IS NULL OR r.createdAt >= :from)
               AND (:to IS NULL OR r.createdAt <= :to)
+              AND (:solicitanteId IS NULL OR r.solicitanteId = :solicitanteId)
             ORDER BY r.createdAt DESC
             """)
     List<MunicipalRequest> search(
             @Param("status") RequestStatus status,
             @Param("from") Instant from,
-            @Param("to") Instant to
+            @Param("to") Instant to,
+            @Param("solicitanteId") String solicitanteId
     );
 }
