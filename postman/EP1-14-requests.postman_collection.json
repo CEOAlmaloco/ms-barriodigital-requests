@@ -1,0 +1,103 @@
+{
+  "info": {
+    "name": "BarrioDigital requests EP1-14",
+    "description": "CRUD Oracle. Headers X-User-Id / X-User-Roles. from/to = yyyy-MM-dd.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Crear trámite (Vecino)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-User-Id", "value": "oid-vecino-prueba" },
+          { "key": "X-User-Roles", "value": "Vecino" }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"description\": \"Hueco frente al 123\",\n  \"procedureType\": \"bache\",\n  \"address\": \"Plaza Los Heroes\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8081/api/requests",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "requests"]
+        }
+      }
+    },
+    {
+      "name": "Listar (Vecino, fechas)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-User-Id", "value": "oid-vecino-prueba" },
+          { "key": "X-User-Roles", "value": "Vecino" }
+        ],
+        "url": {
+          "raw": "http://localhost:8081/api/requests?status=INGRESADO&from=2026-09-01&to=2026-09-30",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "requests"],
+          "query": [
+            { "key": "status", "value": "INGRESADO" },
+            { "key": "from", "value": "2026-09-01" },
+            { "key": "to", "value": "2026-09-30" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Listar (Funcionario, todos)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-User-Id", "value": "oid-func-prueba" },
+          { "key": "X-User-Roles", "value": "Funcionario" }
+        ],
+        "url": {
+          "raw": "http://localhost:8081/api/requests",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "requests"]
+        }
+      }
+    },
+    {
+      "name": "Obtener por id",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-User-Id", "value": "oid-vecino-prueba" },
+          { "key": "X-User-Roles", "value": "Vecino" }
+        ],
+        "url": {
+          "raw": "http://localhost:8081/api/requests/{{requestId}}",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "requests", "{{requestId}}"]
+        }
+      }
+    },
+    {
+      "name": "Catálogo procedureType",
+      "request": {
+        "method": "GET",
+        "url": {
+          "raw": "http://localhost:8081/api/requests/meta/procedure-types",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "requests", "meta", "procedure-types"]
+        }
+      }
+    }
+  ],
+  "variable": [
+    { "key": "requestId", "value": "reemplazar-con-uuid" }
+  ]
+}

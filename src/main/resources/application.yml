@@ -1,0 +1,43 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: ms-barriodigital-requests
+  # Carga .env local si existe (nunca se sube a git). Ver .env.example.
+  config:
+    import: optional:file:.env[.properties]
+  datasource:
+    url: ${ORACLE_URL}
+    username: ${ORACLE_USER}
+    password: ${ORACLE_PASSWORD}
+    driver-class-name: oracle.jdbc.OracleDriver
+    hikari:
+      pool-name: barriodigital-requests-oracle
+      maximum-pool-size: 5
+      minimum-idle: 1
+      connection-timeout: 30000
+      data-source-properties:
+        oracle.net.tns_admin: ${ORACLE_WALLET_DIR}
+  jpa:
+    open-in-view: false
+    hibernate:
+      # Crea/actualiza municipal_requests en Oracle (EP1-14). Ver también db/schema.sql.
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: when_authorized
+  health:
+    db:
+      enabled: true
