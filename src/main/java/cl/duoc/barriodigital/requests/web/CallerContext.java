@@ -8,19 +8,26 @@ public record CallerContext(String userId, String rolesHeader) {
     public static final String HEADER_USER_ID = "X-User-Id";
     public static final String HEADER_USER_ROLES = "X-User-Roles";
 
+    /** Contrato EP1.5-01: solo Funcionario cambia estado (Admin no). */
+    public boolean isFuncionario() {
+        return hasRole("Funcionario") || hasRole("ROLE_Funcionario");
+    }
+
     public boolean isStaff() {
+        return hasRole("Admin")
+                || hasRole("Funcionario")
+                || hasRole("Auditor")
+                || hasRole("ROLE_Admin")
+                || hasRole("ROLE_Funcionario")
+                || hasRole("ROLE_Auditor");
+    }
+
+    private boolean hasRole(String expected) {
         if (rolesHeader == null || rolesHeader.isBlank()) {
             return false;
         }
-        String[] parts = rolesHeader.split(",");
-        for (String part : parts) {
-            String role = part.trim();
-            if (role.equalsIgnoreCase("Admin")
-                    || role.equalsIgnoreCase("Funcionario")
-                    || role.equalsIgnoreCase("Auditor")
-                    || role.equalsIgnoreCase("ROLE_Admin")
-                    || role.equalsIgnoreCase("ROLE_Funcionario")
-                    || role.equalsIgnoreCase("ROLE_Auditor")) {
+        for (String part : rolesHeader.split(",")) {
+            if (expected.equalsIgnoreCase(part.trim())) {
                 return true;
             }
         }

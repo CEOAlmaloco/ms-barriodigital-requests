@@ -3,6 +3,7 @@ package cl.duoc.barriodigital.requests.service;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.ProcedureTypes;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
+import cl.duoc.barriodigital.requests.domain.RequestTransitions;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
@@ -79,6 +80,60 @@ public class RequestService {
 
         String ownerFilter = caller.mustFilterOwnRequests() ? caller.userId().trim() : null;
         return repository.search(status, fromInstant, toInstant, ownerFilter);
+    }
+
+    /**
+     * EP1.5-04: parsea status en el service (como procedureType en create).
+     * El PUT del controller llega en EP1.5-05.
+     */
+    @Transactional
+    public MunicipalRequest changeStatus(String id, String rawStatus, String rejectionReason, CallerContext caller) {
+        requireUserId(caller);
+        if (!caller.isFuncionario()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo un Funcionario puede cambiar el estado");
+        }
+
+        RequestStatus target = parseStatus(rawStatus);
+        if (target == RequestStatus.RECHAZADO) {
+            String reason = rejectionReason == null ? "" : rejectionReason.trim();
+            if (reason.isEmpty()) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "rejectionReason es obligatorio cuando el estado es RECHAZADO"
+                );
+            }
+            if (reason.length() > 500) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "rejectionReason no puede superar 500 caracteres");
+            }
+            rejectionReason = reason;
+        }
+
+        MunicipalRequest found = repository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado"));
+
+        if (!RequestTransitions.isAllowed(found.getStatus(), target)) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "No se puede pasar de " + found.getStatus() + " a " + target
+            );
+        }
+
+        found.applyStatus(target, rejectionReason);
+        return repository.save(found);
+    }
+
+    static RequestStatus parseStatus(String rawStatus) {
+        if (rawStatus == null || rawStatus.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status es obligatorio");
+        }
+        try {
+            return RequestStatus.valueOf(rawStatus.trim());
+        } catch (IllegalArgumentException ex) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "status invalido. Valores: INGRESADO, ADMITIDO, EN_GESTION, EN_TERRENO, RESUELTO, RECHAZADO"
+            );
+        }
     }
 
     private static void requireUserId(CallerContext caller) {

@@ -41,6 +41,10 @@ public class MunicipalRequest {
     @Column(nullable = false, length = 30)
     private RequestStatus status;
 
+    /** Solo cuando status es RECHAZADO. Contrato EP1.5-01, máx. 500. */
+    @Column(name = "rejection_reason", length = 500)
+    private String rejectionReason;
+
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
@@ -126,8 +130,18 @@ public class MunicipalRequest {
         return updatedAt;
     }
 
+    public String getRejectionReason() {
+        return rejectionReason;
+    }
+
     public void setStatus(RequestStatus status) {
         this.status = status;
+        this.updatedAt = Instant.now();
+    }
+
+    public void applyStatus(RequestStatus next, String rejectionReason) {
+        this.status = next;
+        this.rejectionReason = next == RequestStatus.RECHAZADO ? rejectionReason : null;
         this.updatedAt = Instant.now();
     }
 }
