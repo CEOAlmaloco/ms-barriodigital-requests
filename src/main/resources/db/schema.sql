@@ -9,6 +9,7 @@ CREATE TABLE municipal_requests (
     address         VARCHAR2(300)  NOT NULL,
     solicitante_id  VARCHAR2(64)   NOT NULL,
     status          VARCHAR2(30)   NOT NULL,
+    rejection_reason VARCHAR2(500),
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL,
     updated_at      TIMESTAMP WITH TIME ZONE NOT NULL
 );

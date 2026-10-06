@@ -103,4 +103,95 @@ class RequestServiceTest {
         assertThrows(ResponseStatusException.class,
                 () -> requestService.getById("no-existe", new CallerContext("oid", "Admin")));
     }
+
+    @Test
+    void changeStatusAceptaLasOchoTransicionesValidas() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        CallerContext funcionario = new CallerContext("func-1", "Funcionario");
+
+        assertStatusChange(RequestStatus.INGRESADO, "ADMITIDO", null, RequestStatus.ADMITIDO, funcionario);
+        assertStatusChange(RequestStatus.INGRESADO, "RECHAZADO", "Fuera de comuna", RequestStatus.RECHAZADO, funcionario);
+        assertStatusChange(RequestStatus.ADMITIDO, "EN_GESTION", null, RequestStatus.EN_GESTION, funcionario);
+        assertStatusChange(RequestStatus.ADMITIDO, "RECHAZADO", "No corresponde", RequestStatus.RECHAZADO, funcionario);
+        assertStatusChange(RequestStatus.EN_GESTION, "EN_TERRENO", null, RequestStatus.EN_TERRENO, funcionario);
+        assertStatusChange(RequestStatus.EN_GESTION, "RECHAZADO", "Sin cupo operativo", RequestStatus.RECHAZADO, funcionario);
+        assertStatusChange(RequestStatus.EN_TERRENO, "RESUELTO", null, RequestStatus.RESUELTO, funcionario);
+        assertStatusChange(RequestStatus.EN_TERRENO, "RECHAZADO", "No se encontro el domicilio", RequestStatus.RECHAZADO, funcionario);
+    }
+
+    @Test
+    void changeStatusRechazaUnaInvalidaPorCadaNoTerminal() {
+        CallerContext funcionario = new CallerContext("func-1", "Funcionario");
+        assertConflict(RequestStatus.INGRESADO, "EN_TERRENO", funcionario);
+        assertConflict(RequestStatus.ADMITIDO, "RESUELTO", funcionario);
+        assertConflict(RequestStatus.EN_GESTION, "ADMITIDO", funcionario);
+        assertConflict(RequestStatus.EN_TERRENO, "INGRESADO", funcionario);
+    }
+
+    @Test
+    void changeStatusTerminalesNoSalen() {
+        CallerContext funcionario = new CallerContext("func-1", "Funcionario");
+        assertConflict(RequestStatus.RESUELTO, "RECHAZADO", funcionario);
+        assertConflict(RequestStatus.RECHAZADO, "ADMITIDO", funcionario);
+    }
+
+    @Test
+    void changeStatusRechazadoSinMotivoEs400() {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                requestService.changeStatus("id-1", "RECHAZADO", "   ", new CallerContext("func-1", "Funcionario")));
+        assertEquals(400, ex.getStatusCode().value());
+    }
+
+    @Test
+    void changeStatusEnumInvalidoEs400No500() {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                requestService.changeStatus("id-1", "FOO", null, new CallerContext("func-1", "Funcionario")));
+        assertEquals(400, ex.getStatusCode().value());
+    }
+
+    @Test
+    void changeStatusAdminNoPuede() {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                requestService.changeStatus("id-1", "ADMITIDO", null, new CallerContext("admin-1", "Admin")));
+        assertEquals(403, ex.getStatusCode().value());
+    }
+
+    @Test
+    void changeStatus404SiNoExiste() {
+        when(repository.findById("no-existe")).thenReturn(Optional.empty());
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                requestService.changeStatus("no-existe", "ADMITIDO", null, new CallerContext("func-1", "Funcionario")));
+        assertEquals(404, ex.getStatusCode().value());
+    }
+
+    private void assertStatusChange(
+            RequestStatus from,
+            String rawTarget,
+            String reason,
+            RequestStatus expected,
+            CallerContext caller
+    ) {
+        MunicipalRequest current = requestWithStatus(from);
+        when(repository.findById("id-1")).thenReturn(Optional.of(current));
+
+        MunicipalRequest updated = requestService.changeStatus("id-1", rawTarget, reason, caller);
+        assertEquals(expected, updated.getStatus());
+        if (expected == RequestStatus.RECHAZADO) {
+            assertEquals(reason, updated.getRejectionReason());
+        }
+    }
+
+    private void assertConflict(RequestStatus from, String rawTarget, CallerContext caller) {
+        MunicipalRequest current = requestWithStatus(from);
+        when(repository.findById("id-1")).thenReturn(Optional.of(current));
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                requestService.changeStatus("id-1", rawTarget, "motivo", caller));
+        assertEquals(409, ex.getStatusCode().value());
+    }
+
+    private static MunicipalRequest requestWithStatus(RequestStatus status) {
+        MunicipalRequest request = new MunicipalRequest("t", "d", "bache", "dir", "oid");
+        request.setStatus(status);
+        return request;
+    }
 }
