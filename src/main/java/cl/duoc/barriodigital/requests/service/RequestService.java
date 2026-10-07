@@ -84,7 +84,7 @@ public class RequestService {
 
     /**
      * EP1.5-04: parsea status en el service (como procedureType en create).
-     * El PUT del controller llega en EP1.5-05.
+     * Expuesto por PUT /api/requests/{id}/status (EP1.5-05).
      */
     @Transactional
     public MunicipalRequest changeStatus(String id, String rawStatus, String rejectionReason, CallerContext caller) {
