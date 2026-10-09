@@ -3,6 +3,7 @@ package cl.duoc.barriodigital.requests.web;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.ProcedureTypes;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
+import cl.duoc.barriodigital.requests.domain.RequestTransitions;
 import cl.duoc.barriodigital.requests.service.RequestService;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import jakarta.validation.Valid;
@@ -70,5 +71,11 @@ public class RequestController {
     @GetMapping("/meta/procedure-types")
     public Map<String, String> procedureTypes() {
         return ProcedureTypes.asMap();
+    }
+
+    /** Siguientes estados válidos. Misma idea que procedure-types: el front no copia la máquina. */
+    @GetMapping("/meta/transitions")
+    public Map<String, List<String>> transitions() {
+        return RequestTransitions.asMap();
     }
 }
