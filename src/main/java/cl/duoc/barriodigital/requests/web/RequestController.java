@@ -3,6 +3,7 @@ package cl.duoc.barriodigital.requests.web;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.ProcedureTypes;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
+import cl.duoc.barriodigital.requests.domain.RequestTransitions;
 import cl.duoc.barriodigital.requests.service.RequestService;
 import cl.duoc.barriodigital.requests.web.dto.ChangeStatusDto;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
@@ -87,5 +88,17 @@ public class RequestController {
             @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles
     ) {
         return requestService.list(status, from, to, new CallerContext(userId, roles));
+    }
+    
+    /** Catálogo de códigos para alinear el combo del front. Va antes de /{id}. */
+    @GetMapping("/meta/procedure-types")
+    public Map<String, String> procedureTypes() {
+        return ProcedureTypes.asMap();
+    }
+
+    /** Siguientes estados válidos por estado. El front no copia la máquina de estados, la pide acá. */
+    @GetMapping("/meta/transitions")
+    public Map<String, List<String>> transitions() {
+        return RequestTransitions.asNamesMap();
     }
 }

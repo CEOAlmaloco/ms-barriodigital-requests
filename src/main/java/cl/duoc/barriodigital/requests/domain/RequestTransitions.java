@@ -2,12 +2,15 @@ package cl.duoc.barriodigital.requests.domain;
 
 import java.util.EnumMap;
 import java.util.EnumSet;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
 /**
  * Máquina de estados EP1.5-01.
  * Define las 8 transiciones permitidas por contrato.
+ * El front no copia estas flechas: las pide a GET /api/requests/meta/transitions.
  */
 public final class RequestTransitions {
 
@@ -40,5 +43,17 @@ public final class RequestTransitions {
         Map<RequestStatus, Set<RequestStatus>> copy = new EnumMap<>(RequestStatus.class);
         ALLOWED.forEach((from, to) -> copy.put(from, Set.copyOf(to)));
         return copy;
+    }
+
+    /** Para el endpoint meta: un estado por clave, en el orden del enum, los finales con lista vacía. */
+    public static Map<String, List<String>> asNamesMap() {
+        Map<String, List<String>> transitions = new LinkedHashMap<>();
+        for (RequestStatus status : RequestStatus.values()) {
+            List<String> next = ALLOWED.getOrDefault(status, Set.of()).stream()
+                    .map(RequestStatus::name)
+                    .toList();
+            transitions.put(status.name(), next);
+        }
+        return transitions;
     }
 }

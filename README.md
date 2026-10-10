@@ -74,7 +74,9 @@ Contrato alineado con el formulario del Vecino (tipo + descripción + dirección
 
 Códigos de `procedureType` (el front manda el **código**, no el label):  
 `bache`, `alumbrado`, `basura`, `agua`, `ruido`, `otro`  
-Catálogo: `GET /api/requests/meta/procedure-types`
+Catálogo: `GET /api/requests/meta/procedure-types`  
+Transiciones válidas: `GET /api/requests/meta/transitions`  
+(mapa estado → siguientes; `RESUELTO` y `RECHAZADO` vienen con lista vacía)
 
 Filtros de listado: `status`, `from`, `to` como **fecha** `yyyy-MM-dd` (sirve para mat-datepicker).  
 Vecino: el servidor fuerza `solicitanteId = X-User-Id`. Funcionario/Admin/Auditor: ven todos.
