@@ -49,12 +49,6 @@ public class RequestController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
-    /** Catálogo de códigos para alinear el combo del front. Va antes de /{id}. */
-    @GetMapping("/meta/procedure-types")
-    public Map<String, String> procedureTypes() {
-        return ProcedureTypes.asMap();
-    }
-
     @PutMapping("/{id}/status")
     public MunicipalRequest updateStatus(
             @PathVariable String id,
