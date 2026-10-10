@@ -98,6 +98,13 @@ curl "http://localhost:8081/api/requests?status=INGRESADO&from=2026-09-01&to=202
 curl http://localhost:8081/api/requests/<id> `
   -H "X-User-Id: oid-de-prueba" `
   -H "X-User-Roles: Vecino"
+
+# Cambiar estado (solo Funcionario; EP1.5-05)
+curl -X PUT http://localhost:8081/api/requests/<id>/status `
+  -H "Content-Type: application/json" `
+  -H "X-User-Id: oid-funcionario" `
+  -H "X-User-Roles: Funcionario" `
+  -d "{\"status\":\"ADMITIDO\"}"
 ```
 
 Si la tabla ya tenía filas viejas sin `address`/`solicitante_id`, vaciala una vez en SQL:  

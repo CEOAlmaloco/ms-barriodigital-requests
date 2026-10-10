@@ -5,6 +5,7 @@ import cl.duoc.barriodigital.requests.domain.ProcedureTypes;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.domain.RequestTransitions;
 import cl.duoc.barriodigital.requests.service.RequestService;
+import cl.duoc.barriodigital.requests.web.dto.ChangeStatusDto;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -13,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -47,6 +49,27 @@ public class RequestController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
+    /** Catálogo de códigos para alinear el combo del front. Va antes de /{id}. */
+    @GetMapping("/meta/procedure-types")
+    public Map<String, String> procedureTypes() {
+        return ProcedureTypes.asMap();
+    }
+
+    @PutMapping("/{id}/status")
+    public MunicipalRequest updateStatus(
+            @PathVariable String id,
+            @Valid @RequestBody ChangeStatusDto body,
+            @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
+            @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles
+    ) {
+        return requestService.changeStatus(
+                id,
+                body.status(),
+                body.rejectionReason(),
+                new CallerContext(userId, roles)
+        );
+    }
+
     @GetMapping("/{id}")
     public MunicipalRequest getById(
             @PathVariable String id,
@@ -66,16 +89,16 @@ public class RequestController {
     ) {
         return requestService.list(status, from, to, new CallerContext(userId, roles));
     }
-
-    /** Catálogo de códigos para alinear el combo del front. */
+    
+    /** Catálogo de códigos para alinear el combo del front. Va antes de /{id}. */
     @GetMapping("/meta/procedure-types")
     public Map<String, String> procedureTypes() {
         return ProcedureTypes.asMap();
     }
 
-    /** Siguientes estados válidos. Misma idea que procedure-types: el front no copia la máquina. */
+    /** Siguientes estados válidos por estado. El front no copia la máquina de estados, la pide acá. */
     @GetMapping("/meta/transitions")
     public Map<String, List<String>> transitions() {
-        return RequestTransitions.asMap();
+        return RequestTransitions.asNamesMap();
     }
 }

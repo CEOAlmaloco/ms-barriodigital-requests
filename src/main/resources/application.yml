@@ -1,5 +1,8 @@
 server:
   port: 8081
+  # EP1.5-04: sin esto Spring oculta el message de ResponseStatusException (default never).
+  error:
+    include-message: always
 
 spring:
   application:

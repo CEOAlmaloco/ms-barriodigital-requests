@@ -1,32 +1,55 @@
 package cl.duoc.barriodigital.requests.domain;
 
+import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
- * Máquina de estados del trámite (docs/arquitectura-barriodigital.md).
- * El front no debe copiar estas flechas: las pide en GET /api/requests/meta/transitions.
+ * Máquina de estados EP1.5-01.
+ * Define las 8 transiciones permitidas por contrato.
+ * El front no copia estas flechas: las pide a GET /api/requests/meta/transitions.
  */
 public final class RequestTransitions {
 
-    private static final Map<RequestStatus, List<RequestStatus>> NEXT = Map.of(
-            RequestStatus.INGRESADO, List.of(RequestStatus.ADMITIDO, RequestStatus.RECHAZADO),
-            RequestStatus.ADMITIDO, List.of(RequestStatus.EN_GESTION, RequestStatus.RECHAZADO),
-            RequestStatus.EN_GESTION, List.of(RequestStatus.EN_TERRENO),
-            RequestStatus.EN_TERRENO, List.of(RequestStatus.RESUELTO, RequestStatus.RECHAZADO),
-            RequestStatus.RESUELTO, List.of(),
-            RequestStatus.RECHAZADO, List.of()
-    );
+    private static final Map<RequestStatus, Set<RequestStatus>> ALLOWED = new EnumMap<>(RequestStatus.class);
+
+    static {
+        ALLOWED.put(RequestStatus.INGRESADO, EnumSet.of(RequestStatus.ADMITIDO, RequestStatus.RECHAZADO));
+        ALLOWED.put(RequestStatus.ADMITIDO, EnumSet.of(RequestStatus.EN_GESTION, RequestStatus.RECHAZADO));
+        ALLOWED.put(RequestStatus.EN_GESTION, EnumSet.of(RequestStatus.EN_TERRENO, RequestStatus.RECHAZADO));
+        ALLOWED.put(RequestStatus.EN_TERRENO, EnumSet.of(RequestStatus.RESUELTO, RequestStatus.RECHAZADO));
+        ALLOWED.put(RequestStatus.RESUELTO, EnumSet.noneOf(RequestStatus.class));
+        ALLOWED.put(RequestStatus.RECHAZADO, EnumSet.noneOf(RequestStatus.class));
+    }
 
     private RequestTransitions() {
     }
 
-    /** Un estado por clave, en el orden del enum. Los finales van con lista vacía. */
-    public static Map<String, List<String>> asMap() {
+    public static boolean isAllowed(RequestStatus from, RequestStatus to) {
+        if (from == null || to == null) {
+            return false;
+        }
+        return ALLOWED.getOrDefault(from, Set.of()).contains(to);
+    }
+
+    public static Set<RequestStatus> next(RequestStatus from) {
+        return Set.copyOf(ALLOWED.getOrDefault(from, Set.of()));
+    }
+
+    public static Map<RequestStatus, Set<RequestStatus>> asMap() {
+        Map<RequestStatus, Set<RequestStatus>> copy = new EnumMap<>(RequestStatus.class);
+        ALLOWED.forEach((from, to) -> copy.put(from, Set.copyOf(to)));
+        return copy;
+    }
+
+    /** Para el endpoint meta: un estado por clave, en el orden del enum, los finales con lista vacía. */
+    public static Map<String, List<String>> asNamesMap() {
         Map<String, List<String>> transitions = new LinkedHashMap<>();
         for (RequestStatus status : RequestStatus.values()) {
-            List<String> next = NEXT.getOrDefault(status, List.of()).stream()
+            List<String> next = ALLOWED.getOrDefault(status, Set.of()).stream()
                     .map(RequestStatus::name)
                     .toList();
             transitions.put(status.name(), next);
