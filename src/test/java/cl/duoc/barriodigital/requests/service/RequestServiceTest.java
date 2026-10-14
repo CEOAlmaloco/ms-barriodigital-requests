@@ -48,6 +48,7 @@ class RequestServiceTest {
 
         assertEquals(RequestStatus.INGRESADO, created.getStatus());
         assertEquals("oid-vecino-1", created.getSolicitanteId());
+        assertEquals("oid-vecino-1", created.getSolicitanteNombre());
         assertEquals("Plaza Los Heroes", created.getAddress());
         assertEquals("bache", created.getProcedureType());
         assertTrue(created.getTitle().contains("Bache"));
@@ -81,6 +82,55 @@ class RequestServiceTest {
         );
 
         assertEquals("Alumbrado público — Calle 2", created.getTitle());
+    }
+
+    @Test
+    void createGuardaElNombreDelHeaderYNoElDelBody() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MunicipalRequest created = requestService.create(
+                new CreateRequestDto("Hueco", "bache", "Calle 1"),
+                new CallerContext("oid-1", "Vecino", "  Alex Ampuero  ")
+        );
+
+        assertEquals("Alex Ampuero", created.getSolicitanteNombre());
+        assertEquals("oid-1", created.getSolicitanteId());
+    }
+
+    @Test
+    void sinHeaderDeNombreQuedaElIdYSinNingunoQuedaSinNombre() {
+        assertEquals("oid-1", RequestService.snapshotName("   ", "oid-1"));
+        assertEquals("Sin nombre", RequestService.snapshotName(null, "  "));
+    }
+
+    @Test
+    void getByIdYListadoDevuelvenElNombreYaGuardado() {
+        MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-1", "Alex Ampuero");
+        when(repository.findById("id-1")).thenReturn(Optional.of(stored));
+        when(repository.search(isNull(), isNull(), isNull(), eq("oid-1"))).thenReturn(List.of(stored));
+
+        MunicipalRequest byId = requestService.getById("id-1", new CallerContext("oid-1", "Vecino", "Otro"));
+        List<MunicipalRequest> listed = requestService.list(null, null, null, new CallerContext("oid-1", "Vecino", "Otro"));
+
+        assertEquals("Alex Ampuero", byId.getSolicitanteNombre());
+        assertEquals("Alex Ampuero", listed.get(0).getSolicitanteNombre());
+    }
+
+    @Test
+    void changeStatusNoPisaElNombreGuardado() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-1", "Alex Ampuero");
+        when(repository.findById("id-1")).thenReturn(Optional.of(stored));
+
+        MunicipalRequest updated = requestService.changeStatus(
+                "id-1",
+                "ADMITIDO",
+                null,
+                new CallerContext("func-1", "Funcionario", "Funcionario Nuevo")
+        );
+
+        assertEquals(RequestStatus.ADMITIDO, updated.getStatus());
+        assertEquals("Alex Ampuero", updated.getSolicitanteNombre());
     }
 
     @Test

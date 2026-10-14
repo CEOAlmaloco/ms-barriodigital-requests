@@ -70,6 +70,7 @@ Contrato alineado con el formulario del Vecino (tipo + descripción + dirección
 | `description`, `procedureType`, `address` | Body del POST |
 | `title` | **Autogenerado** (`{etiqueta} — {dirección}`). No va en el body |
 | `solicitanteId` | Header `X-User-Id` (oid/sub del JWT vía BFF). **Nunca** del body |
+| `solicitanteNombre` | Header `X-User-Name` solo en el POST. Se guarda en la fila. Si el header viene vacío, queda el `solicitanteId`; si tampoco hay id, `Sin nombre`. GET y PUT de estado no lo recalculan |
 | Roles | Header `X-User-Roles` (ej. `Vecino` o `Funcionario`) |
 
 `procedureType` es el **código** del tipo, no el label. Los tipos válidos los define `ms-barriodigital-catalog` y el BFF revisa que el código exista y esté activo antes de llamar a requests.  
@@ -88,6 +89,7 @@ curl -X POST http://localhost:8081/api/requests `
   -H "Content-Type: application/json" `
   -H "X-User-Id: oid-de-prueba" `
   -H "X-User-Roles: Vecino" `
+  -H "X-User-Name: Alex Ampuero" `
   -d "{\"description\":\"Hueco frente al 123\",\"procedureType\":\"bache\",\"address\":\"Plaza Los Heroes\"}"
 
 # Listar (fecha simple)

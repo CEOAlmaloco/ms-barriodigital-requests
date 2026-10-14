@@ -37,6 +37,13 @@ public class MunicipalRequest {
     @Column(name = "solicitante_id", nullable = false, length = 64)
     private String solicitanteId;
 
+    /**
+     * Snapshot del nombre al crear. No se vuelve a leer del JWT en los GET.
+     * Nullable: las filas anteriores a EP1.5-24 no lo tienen.
+     */
+    @Column(name = "solicitante_nombre", length = 200)
+    private String solicitanteNombre;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private RequestStatus status;
@@ -62,12 +69,24 @@ public class MunicipalRequest {
             String address,
             String solicitanteId
     ) {
+        this(title, description, procedureType, address, solicitanteId, null);
+    }
+
+    public MunicipalRequest(
+            String title,
+            String description,
+            String procedureType,
+            String address,
+            String solicitanteId,
+            String solicitanteNombre
+    ) {
         this.id = UUID.randomUUID().toString();
         this.title = title;
         this.description = description;
         this.procedureType = procedureType;
         this.address = address;
         this.solicitanteId = solicitanteId;
+        this.solicitanteNombre = solicitanteNombre;
         this.status = RequestStatus.INGRESADO;
         Instant now = Instant.now();
         this.createdAt = now;
@@ -116,6 +135,10 @@ public class MunicipalRequest {
 
     public String getSolicitanteId() {
         return solicitanteId;
+    }
+
+    public String getSolicitanteNombre() {
+        return solicitanteNombre;
     }
 
     public RequestStatus getStatus() {

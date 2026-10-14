@@ -47,7 +47,8 @@ public class RequestService {
                 body.description().trim(),
                 procedureType,
                 address,
-                caller.userId().trim()
+                caller.userId().trim(),
+                snapshotName(caller.userName(), caller.userId())
         );
         return repository.save(request);
     }
@@ -134,6 +135,25 @@ public class RequestService {
                     "status invalido. Valores: INGRESADO, ADMITIDO, EN_GESTION, EN_TERRENO, RESUELTO, RECHAZADO"
             );
         }
+    }
+
+    /**
+     * Nombre que queda en la fila. El header manda; si viene vacío, el id; si tampoco hay id, "Sin nombre".
+     */
+    static String snapshotName(String headerName, String solicitanteId) {
+        String fromHeader = blankToNull(headerName);
+        if (fromHeader != null) {
+            return fromHeader;
+        }
+        String fromId = blankToNull(solicitanteId);
+        return fromId != null ? fromId : "Sin nombre";
+    }
+
+    private static String blankToNull(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return value.trim();
     }
 
     private static void requireUserId(CallerContext caller) {
