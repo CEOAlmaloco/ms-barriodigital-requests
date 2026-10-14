@@ -72,9 +72,10 @@ Contrato alineado con el formulario del Vecino (tipo + descripción + dirección
 | `solicitanteId` | Header `X-User-Id` (oid/sub del JWT vía BFF). **Nunca** del body |
 | Roles | Header `X-User-Roles` (ej. `Vecino` o `Funcionario`) |
 
-Códigos de `procedureType` (el front manda el **código**, no el label):  
-`bache`, `alumbrado`, `basura`, `agua`, `ruido`, `otro`  
-Catálogo: `GET /api/requests/meta/procedure-types`  
+`procedureType` es el **código** del tipo, no el label. Los tipos válidos los define `ms-barriodigital-catalog` y el BFF revisa que el código exista y esté activo antes de llamar a requests.  
+Requests solo valida el formato: tras recortar espacios y pasar a minúsculas, tiene que cumplir `^[a-z0-9_-]{1,40}$`. Si no, responde **400**.  
+El título usa la etiqueta conocida de `bache`, `alumbrado`, `basura`, `agua`, `ruido` y `otro`. Para un código nuevo usa el código tal cual.  
+Catálogo (**deprecado**): `GET /api/requests/meta/procedure-types` sigue respondiendo la lista fija, pero la fuente de verdad es `GET /api/catalog/procedures`.  
 Transiciones válidas: `GET /api/requests/meta/transitions`  
 (mapa estado → siguientes; `RESUELTO` y `RECHAZADO` vienen con lista vacía)
 

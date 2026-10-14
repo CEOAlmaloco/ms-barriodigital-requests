@@ -84,7 +84,13 @@ public class RequestController {
         return requestService.list(status, from, to, new CallerContext(userId, roles));
     }
     
-    /** Catálogo de códigos para alinear el combo del front. Va antes de /{id}. */
+    /**
+     * Catálogo de códigos para alinear el combo del front. Va antes de /{id}.
+     *
+     * @deprecated la fuente de verdad de los tipos de trámite es GET /api/catalog/procedures.
+     * Este endpoint sigue respondiendo la lista fija de siempre.
+     */
+    @Deprecated
     @GetMapping("/meta/procedure-types")
     public Map<String, String> procedureTypes() {
         return ProcedureTypes.asMap();
