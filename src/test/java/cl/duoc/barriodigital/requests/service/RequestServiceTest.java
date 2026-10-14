@@ -23,6 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -58,10 +59,56 @@ class RequestServiceTest {
     }
 
     @Test
-    void createRechazaProcedureTypeDesconocido() {
+    void createAceptaUnCodigoNuevoBienFormadoYTitulaConElCodigoCrudo() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MunicipalRequest created = requestService.create(
+                new CreateRequestDto("Semaforo apagado", " Semaforo ", "Calle 1"),
+                new CallerContext("oid-1", "Vecino")
+        );
+
+        assertEquals("semaforo", created.getProcedureType());
+        assertEquals("semaforo — Calle 1", created.getTitle());
+    }
+
+    @Test
+    void createTitulaAlumbradoConLaEtiquetaConTilde() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MunicipalRequest created = requestService.create(
+                new CreateRequestDto("Poste sin luz", "alumbrado", "Calle 2"),
+                new CallerContext("oid-1", "Vecino")
+        );
+
+        assertEquals("Alumbrado público — Calle 2", created.getTitle());
+    }
+
+    @Test
+    void createRechazaProcedureTypeConFormatoInvalido() {
         CallerContext vecino = new CallerContext("oid-1", "Vecino");
-        assertThrows(ResponseStatusException.class, () ->
-                requestService.create(new CreateRequestDto("x", "tipo-inventado", "Calle 1"), vecino));
+
+        assertBadProcedureType("semaforo roto", vecino);
+        assertBadProcedureType("señal", vecino);
+        assertBadProcedureType("iluminación", vecino);
+        assertBadProcedureType("a".repeat(41), vecino);
+        assertBadProcedureType("bache!", vecino);
+        assertBadProcedureType("bache.calle", vecino);
+        assertBadProcedureType("   ", vecino);
+        assertBadProcedureType(null, vecino);
+        verify(repository, never()).save(any());
+    }
+
+    @Test
+    void createAceptaCodigoDeCuarentaCaracteres() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        String code = "a".repeat(40);
+
+        MunicipalRequest created = requestService.create(
+                new CreateRequestDto("x", code, "Calle 1"),
+                new CallerContext("oid-1", "Vecino")
+        );
+
+        assertEquals(code, created.getProcedureType());
     }
 
     @Test
@@ -179,6 +226,16 @@ class RequestServiceTest {
         if (expected == RequestStatus.RECHAZADO) {
             assertEquals(reason, updated.getRejectionReason());
         }
+    }
+
+    private void assertBadProcedureType(String procedureType, CallerContext caller) {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                requestService.create(new CreateRequestDto("x", procedureType, "Calle 1"), caller));
+        assertEquals(400, ex.getStatusCode().value());
+        assertEquals(
+                "procedureType invalido. Debe ser minusculas, numeros, guion o guion bajo (maximo 40 caracteres)",
+                ex.getReason()
+        );
     }
 
     private void assertConflict(RequestStatus from, String rawTarget, CallerContext caller) {

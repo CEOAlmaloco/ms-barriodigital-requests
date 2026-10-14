@@ -32,10 +32,10 @@ public class RequestService {
         requireUserId(caller);
 
         String procedureType = ProcedureTypes.normalize(body.procedureType());
-        if (!ProcedureTypes.isAllowed(procedureType)) {
+        if (!ProcedureTypes.hasValidFormat(procedureType)) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
-                    "procedureType invalido. Codigos: " + String.join(", ", ProcedureTypes.CODES)
+                    "procedureType invalido. Debe ser minusculas, numeros, guion o guion bajo (maximo 40 caracteres)"
             );
         }
 
