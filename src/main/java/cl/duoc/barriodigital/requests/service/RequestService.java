@@ -109,7 +109,8 @@ public class RequestService {
             rejectionReason = reason;
         }
 
-        MunicipalRequest found = repository.findById(id)
+        // El bloqueo cubre lectura, validación y escritura de cualquier transición del mismo trámite.
+        MunicipalRequest found = repository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado"));
 
         if (!RequestTransitions.isAllowed(found.getStatus(), target)) {

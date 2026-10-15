@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
@@ -21,13 +22,21 @@ class RequestTransitionsTest {
 
     @Test
     void sigueLaMaquinaDelCaso() {
-        Map<String, List<String>> transitions = RequestTransitions.asNamesMap();
-
-        assertEquals(List.of("ADMITIDO", "RECHAZADO"), transitions.get("INGRESADO"));
-        assertEquals(List.of("EN_GESTION", "RECHAZADO"), transitions.get("ADMITIDO"));
-        assertEquals(List.of("EN_TERRENO", "RECHAZADO"), transitions.get("EN_GESTION"));
-        assertEquals(List.of("RESUELTO", "RECHAZADO"), transitions.get("EN_TERRENO"));
-        assertEquals(List.of(), transitions.get("RESUELTO"));
-        assertEquals(List.of(), transitions.get("RECHAZADO"));
+        Map<RequestStatus, Set<RequestStatus>> transitions = RequestTransitions.asMap();
+        assertEquals(Map.of(
+                RequestStatus.INGRESADO, Set.of(RequestStatus.ADMITIDO, RequestStatus.RECHAZADO),
+                RequestStatus.ADMITIDO, Set.of(RequestStatus.EN_GESTION, RequestStatus.RECHAZADO),
+                RequestStatus.EN_GESTION, Set.of(RequestStatus.EN_TERRENO, RequestStatus.RECHAZADO),
+                RequestStatus.EN_TERRENO, Set.of(RequestStatus.RESUELTO, RequestStatus.RECHAZADO),
+                RequestStatus.RESUELTO, Set.of(),
+                RequestStatus.RECHAZADO, Set.of()
+        ), transitions);
+        Map<String, List<String>> names = RequestTransitions.asNamesMap();
+        transitions.forEach((state, targets) -> {
+            List<String> actual = names.get(state.name());
+            assertEquals(targets.size(), actual.size());
+            assertEquals(targets.stream().map(Enum::name).collect(java.util.stream.Collectors.toSet()),
+                    Set.copyOf(actual));
+        });
     }
 }
