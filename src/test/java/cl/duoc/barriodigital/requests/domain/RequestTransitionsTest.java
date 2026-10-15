@@ -11,7 +11,7 @@ class RequestTransitionsTest {
 
     @Test
     void publicaUnaEntradaPorEstado() {
-        Map<String, List<String>> transitions = RequestTransitions.asMap();
+        Map<String, List<String>> transitions = RequestTransitions.asNamesMap();
 
         assertEquals(RequestStatus.values().length, transitions.size());
         for (RequestStatus status : RequestStatus.values()) {
@@ -21,11 +21,11 @@ class RequestTransitionsTest {
 
     @Test
     void sigueLaMaquinaDelCaso() {
-        Map<String, List<String>> transitions = RequestTransitions.asMap();
+        Map<String, List<String>> transitions = RequestTransitions.asNamesMap();
 
         assertEquals(List.of("ADMITIDO", "RECHAZADO"), transitions.get("INGRESADO"));
         assertEquals(List.of("EN_GESTION", "RECHAZADO"), transitions.get("ADMITIDO"));
-        assertEquals(List.of("EN_TERRENO"), transitions.get("EN_GESTION"));
+        assertEquals(List.of("EN_TERRENO", "RECHAZADO"), transitions.get("EN_GESTION"));
         assertEquals(List.of("RESUELTO", "RECHAZADO"), transitions.get("EN_TERRENO"));
         assertEquals(List.of(), transitions.get("RESUELTO"));
         assertEquals(List.of(), transitions.get("RECHAZADO"));
