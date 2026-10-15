@@ -120,7 +120,7 @@ class RequestServiceTest {
     void changeStatusNoPisaElNombreGuardado() {
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
         MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-1", "Alex Ampuero");
-        when(repository.findById("id-1")).thenReturn(Optional.of(stored));
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(stored));
 
         MunicipalRequest updated = requestService.changeStatus(
                 "id-1",
@@ -255,7 +255,7 @@ class RequestServiceTest {
 
     @Test
     void changeStatus404SiNoExiste() {
-        when(repository.findById("no-existe")).thenReturn(Optional.empty());
+        when(repository.findByIdForUpdate("no-existe")).thenReturn(Optional.empty());
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
                 requestService.changeStatus("no-existe", "ADMITIDO", null, new CallerContext("func-1", "Funcionario")));
         assertEquals(404, ex.getStatusCode().value());
@@ -269,7 +269,7 @@ class RequestServiceTest {
             CallerContext caller
     ) {
         MunicipalRequest current = requestWithStatus(from);
-        when(repository.findById("id-1")).thenReturn(Optional.of(current));
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(current));
 
         MunicipalRequest updated = requestService.changeStatus("id-1", rawTarget, reason, caller);
         assertEquals(expected, updated.getStatus());
@@ -290,7 +290,7 @@ class RequestServiceTest {
 
     private void assertConflict(RequestStatus from, String rawTarget, CallerContext caller) {
         MunicipalRequest current = requestWithStatus(from);
-        when(repository.findById("id-1")).thenReturn(Optional.of(current));
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(current));
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
                 requestService.changeStatus("id-1", rawTarget, "motivo", caller));
         assertEquals(409, ex.getStatusCode().value());

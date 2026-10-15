@@ -139,6 +139,12 @@ docker run --rm -p 8081:8081 `
 Health: `http://localhost:8081/actuator/health`  
 Orquestación con BFF: repo `barriodigital-infra` → carpeta `apps/`.
 
+## Concurrencia de estado (EP1.5-18)
+
+EP1.5-18 protege `changeStatus()` con `findByIdForUpdate()` y bloqueo pesimista de escritura por trámite. La misma transacción lee, valida la transición, modifica y persiste, para todas las transiciones. Dos admisiones del mismo trámite no validan simultáneamente INGRESADO: una completa y la otra recibe el 409 existente al observar ADMITIDO. También se serializan admisión y rechazo; trámites distintos no usan un bloqueo global. Los errores de bloqueo/persistencia no se convierten en conflictos de negocio.
+
+La prueba `RequestStatusConcurrencyTest` usa dos transacciones independientes y H2, siguiendo Catalog. H2 se agrega solo con alcance test y versión del BOM; no valida Oracle desplegado. Ejecutar `.\mvnw.cmd verify`. Esta protección no convierte la coordinación con Catalog en una transacción distribuida ni garantiza recuperación ante respuestas perdidas.
+
 ## Qué sigue
 
 - Cambio de estado y reglas de EN_TERRENO (EP2)
