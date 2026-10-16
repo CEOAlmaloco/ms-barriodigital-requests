@@ -3,15 +3,22 @@ package cl.duoc.barriodigital.requests.web;
 /**
  * Identidad que el BFF reenvía tras validar el JWT (nunca viene del body).
  */
-public record CallerContext(String userId, String rolesHeader, String userName) {
+public record CallerContext(String userId, String rolesHeader, String userName, String userEmail) {
 
     public static final String HEADER_USER_ID = "X-User-Id";
     public static final String HEADER_USER_ROLES = "X-User-Roles";
     public static final String HEADER_USER_NAME = "X-User-Name";
+    /** EP2-20 lo reenvía en el POST. El email no va en el body. */
+    public static final String HEADER_USER_EMAIL = "X-User-Email";
 
-    /** Identidad sin nombre. El alta usa solicitanteId como respaldo. */
+    /** Identidad sin email. GET y cambio de estado no lo necesitan. */
+    public CallerContext(String userId, String rolesHeader, String userName) {
+        this(userId, rolesHeader, userName, null);
+    }
+
+    /** Identidad sin nombre ni email. El alta usa solicitanteId como respaldo del nombre. */
     public CallerContext(String userId, String rolesHeader) {
-        this(userId, rolesHeader, null);
+        this(userId, rolesHeader, null, null);
     }
 
     /** Contrato EP1.5-01: solo Funcionario cambia estado (Admin no). */
