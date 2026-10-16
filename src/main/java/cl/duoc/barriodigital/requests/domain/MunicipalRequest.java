@@ -30,6 +30,13 @@ public class MunicipalRequest {
     @Column(name = "procedure_type", nullable = false, length = 100)
     private String procedureType;
 
+    /**
+     * Snapshot del label del tipo al crear, tal como lo tenía catalog. Mismo largo que label en catalog.
+     * Nullable: las filas anteriores quedan en null y Hibernate update agrega la columna.
+     */
+    @Column(name = "procedure_label", length = 120)
+    private String procedureLabel;
+
     @Column(nullable = false, length = 300)
     private String address;
 
@@ -99,10 +106,24 @@ public class MunicipalRequest {
             String solicitanteNombre,
             String solicitanteEmail
     ) {
+        this(title, description, procedureType, address, solicitanteId, solicitanteNombre, solicitanteEmail, null);
+    }
+
+    public MunicipalRequest(
+            String title,
+            String description,
+            String procedureType,
+            String address,
+            String solicitanteId,
+            String solicitanteNombre,
+            String solicitanteEmail,
+            String procedureLabel
+    ) {
         this.id = UUID.randomUUID().toString();
         this.title = title;
         this.description = description;
         this.procedureType = procedureType;
+        this.procedureLabel = procedureLabel;
         this.address = address;
         this.solicitanteId = solicitanteId;
         this.solicitanteNombre = solicitanteNombre;
@@ -147,6 +168,10 @@ public class MunicipalRequest {
 
     public String getProcedureType() {
         return procedureType;
+    }
+
+    public String getProcedureLabel() {
+        return procedureLabel;
     }
 
     public String getAddress() {

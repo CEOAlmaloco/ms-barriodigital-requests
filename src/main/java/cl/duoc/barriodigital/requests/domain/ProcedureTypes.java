@@ -44,7 +44,18 @@ public final class ProcedureTypes {
 
     /** Título autogenerado: "{etiqueta} — {direccion}" (máx. 200). */
     public static String buildTitle(String procedureTypeCode, String address) {
-        String base = labelOf(procedureTypeCode) + " — " + address.trim();
+        return buildTitle(procedureTypeCode, address, null);
+    }
+
+    /**
+     * Igual que {@link #buildTitle(String, String)}, pero la etiqueta es el label que mandó catalog.
+     * Si no viene, usa {@link #labelOf(String)}.
+     */
+    public static String buildTitle(String procedureTypeCode, String address, String procedureLabel) {
+        String label = procedureLabel == null || procedureLabel.isBlank()
+                ? labelOf(procedureTypeCode)
+                : procedureLabel.trim();
+        String base = label + " — " + address.trim();
         if (base.length() <= 200) {
             return base;
         }

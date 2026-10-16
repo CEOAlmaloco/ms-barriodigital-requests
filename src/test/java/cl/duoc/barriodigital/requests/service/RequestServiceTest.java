@@ -130,6 +130,96 @@ class RequestServiceTest {
     }
 
     @Test
+    void createGuardaElLabelDecodificadoDelHeaderYTitulaConEl() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MunicipalRequest created = requestService.create(
+                new CreateRequestDto("Poste sin luz", "alumbrado", "Calle 2"),
+                new CallerContext("oid-1", "Vecino", "Alex Ampuero", null, "Alumbrado%20p%C3%BAblico%20nocturno")
+        );
+
+        assertEquals("Alumbrado público nocturno", created.getProcedureLabel());
+        assertEquals("Alumbrado público nocturno — Calle 2", created.getTitle());
+
+        ArgumentCaptor<MunicipalRequest> captor = ArgumentCaptor.forClass(MunicipalRequest.class);
+        verify(repository).save(captor.capture());
+        assertEquals("Alumbrado público nocturno", captor.getValue().getProcedureLabel());
+    }
+
+    @Test
+    void createDecodificaElMasComoEspacio() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MunicipalRequest created = requestService.create(
+                new CreateRequestDto("Hueco", "bache", "Calle 1"),
+                new CallerContext("oid-1", "Vecino", "Alex Ampuero", null, "Bache+grave")
+        );
+
+        assertEquals("Bache grave", created.getProcedureLabel());
+        assertEquals("Bache grave — Calle 1", created.getTitle());
+    }
+
+    @Test
+    void createSinHeaderDeLabelDejaNullYTitulaComoAntes() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MunicipalRequest sinHeader = requestService.create(
+                new CreateRequestDto("Poste sin luz", "alumbrado", "Calle 2"),
+                new CallerContext("oid-1", "Vecino", "Alex Ampuero")
+        );
+        MunicipalRequest enBlanco = requestService.create(
+                new CreateRequestDto("Poste sin luz", "alumbrado", "Calle 2"),
+                new CallerContext("oid-1", "Vecino", "Alex Ampuero", null, "   ")
+        );
+
+        assertNull(sinHeader.getProcedureLabel());
+        assertNull(enBlanco.getProcedureLabel());
+        assertEquals("Alumbrado público — Calle 2", sinHeader.getTitle());
+        assertEquals("Alumbrado público — Calle 2", enBlanco.getTitle());
+    }
+
+    @Test
+    void createConHeaderDeLabelInvalidoDejaNullSinError() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MunicipalRequest incompleto = requestService.create(
+                new CreateRequestDto("Hueco", "bache", "Calle 1"),
+                new CallerContext("oid-1", "Vecino", "Alex Ampuero", null, "Bache%E0%A4%A")
+        );
+        MunicipalRequest noHex = requestService.create(
+                new CreateRequestDto("Hueco", "bache", "Calle 1"),
+                new CallerContext("oid-1", "Vecino", "Alex Ampuero", null, "Bache%zz")
+        );
+
+        assertNull(incompleto.getProcedureLabel());
+        assertNull(noHex.getProcedureLabel());
+        assertEquals("Bache en calle — Calle 1", incompleto.getTitle());
+        assertEquals("Bache en calle — Calle 1", noHex.getTitle());
+    }
+
+    @Test
+    void snapshotDeLabelRecortaYTruncaA120() {
+        assertEquals("Bache en calle", RequestService.snapshotProcedureLabel("%20%20Bache%20en%20calle%20%20"));
+        assertNull(RequestService.snapshotProcedureLabel("%20%20"));
+
+        String largo = RequestService.snapshotProcedureLabel("a".repeat(130));
+        assertEquals("a".repeat(120), largo);
+    }
+
+    @Test
+    void getByIdDeTramiteAntiguoDevuelveLabelNull() {
+        MunicipalRequest stored = new MunicipalRequest(
+                "Bache en calle — dir", "d", "bache", "dir", "oid-1", "Alex Ampuero", "vecino@example.com"
+        );
+        when(repository.findById("id-1")).thenReturn(Optional.of(stored));
+
+        MunicipalRequest byId = requestService.getById("id-1", new CallerContext("oid-1", "Vecino"));
+
+        assertNull(byId.getProcedureLabel());
+        assertEquals("Bache en calle — dir", byId.getTitle());
+    }
+
+    @Test
     void getByIdDeTramiteAntiguoDevuelveEmailNullYNoLoRecalcula() {
         MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-1", "Alex Ampuero");
         when(repository.findById("id-1")).thenReturn(Optional.of(stored));
