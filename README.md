@@ -72,11 +72,12 @@ Contrato alineado con el formulario del Vecino (tipo + descripción + dirección
 | `solicitanteId` | Header `X-User-Id` (oid/sub del JWT vía BFF). **Nunca** del body |
 | `solicitanteNombre` | Header `X-User-Name` solo en el POST. Se guarda en la fila. Si el header viene vacío, queda el `solicitanteId`; si tampoco hay id, `Sin nombre`. GET y PUT de estado no lo recalculan |
 | `solicitanteEmail` | Header `X-User-Email` solo en el POST. Se guarda tal cual, recortado. Si no viene o viene en blanco, queda `null` (también los trámites anteriores a esta columna). GET y PUT de estado no lo recalculan. EP2-20 del BFF es quien debe reenviar ese header |
+| `procedureLabel` | Header `X-Procedure-Label` solo en el POST, codificado en URL (UTF-8). El BFF lo arma con el `label` de catalog. Se decodifica, se recorta y se trunca a 120. Si no viene, viene en blanco o no se puede decodificar, queda `null` sin error (también los trámites anteriores a esta columna). GET y PUT de estado no lo recalculan |
 | Roles | Header `X-User-Roles` (ej. `Vecino` o `Funcionario`) |
 
 `procedureType` es el **código** del tipo, no el label. Los tipos válidos los define `ms-barriodigital-catalog` y el BFF revisa que el código exista y esté activo antes de llamar a requests.  
 Requests solo valida el formato: tras recortar espacios y pasar a minúsculas, tiene que cumplir `^[a-z0-9_-]{1,40}$`. Si no, responde **400**.  
-El título usa la etiqueta conocida de `bache`, `alumbrado`, `basura`, `agua`, `ruido` y `otro`. Para un código nuevo usa el código tal cual.  
+El título usa `procedureLabel` si llegó en el header. Si no, usa la etiqueta conocida de `bache`, `alumbrado`, `basura`, `agua`, `ruido` y `otro`, y para un código nuevo el código tal cual.  
 Catálogo (**deprecado**): `GET /api/requests/meta/procedure-types` sigue respondiendo la lista fija, pero la fuente de verdad es `GET /api/catalog/procedures`.  
 Transiciones válidas: `GET /api/requests/meta/transitions`  
 (mapa estado → siguientes; `RESUELTO` y `RECHAZADO` vienen con lista vacía)
@@ -92,6 +93,7 @@ curl -X POST http://localhost:8081/api/requests `
   -H "X-User-Roles: Vecino" `
   -H "X-User-Name: Alex Ampuero" `
   -H "X-User-Email: vecino@example.com" `
+  -H "X-Procedure-Label: Bache%20en%20calle" `
   -d "{\"description\":\"Hueco frente al 123\",\"procedureType\":\"bache\",\"address\":\"Plaza Los Heroes\"}"
 
 # Listar (fecha simple)

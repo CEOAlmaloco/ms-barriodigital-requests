@@ -45,11 +45,12 @@ public class RequestController {
             @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
             @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles,
             @RequestHeader(value = CallerContext.HEADER_USER_NAME, required = false) String userName,
-            @RequestHeader(value = CallerContext.HEADER_USER_EMAIL, required = false) String userEmail
+            @RequestHeader(value = CallerContext.HEADER_USER_EMAIL, required = false) String userEmail,
+            @RequestHeader(value = CallerContext.HEADER_PROCEDURE_LABEL, required = false) String procedureLabel
     ) {
         MunicipalRequest created = requestService.create(
                 body,
-                new CallerContext(userId, roles, userName, userEmail)
+                new CallerContext(userId, roles, userName, userEmail, procedureLabel)
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }

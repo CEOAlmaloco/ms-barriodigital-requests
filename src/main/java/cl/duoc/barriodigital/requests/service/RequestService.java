@@ -12,6 +12,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -20,6 +22,9 @@ import java.util.List;
 
 @Service
 public class RequestService {
+
+    /** Mismo largo que la columna procedure_label y que label en catalog. */
+    static final int PROCEDURE_LABEL_MAX = 120;
 
     private final MunicipalRequestRepository repository;
 
@@ -40,7 +45,8 @@ public class RequestService {
         }
 
         String address = body.address().trim();
-        String title = ProcedureTypes.buildTitle(procedureType, address);
+        String procedureLabel = snapshotProcedureLabel(caller.procedureLabel());
+        String title = ProcedureTypes.buildTitle(procedureType, address, procedureLabel);
 
         MunicipalRequest request = new MunicipalRequest(
                 title,
@@ -49,7 +55,8 @@ public class RequestService {
                 address,
                 caller.userId().trim(),
                 snapshotName(caller.userName(), caller.userId()),
-                snapshotEmail(caller.userEmail())
+                snapshotEmail(caller.userEmail()),
+                procedureLabel
         );
         return repository.save(request);
     }
@@ -154,6 +161,27 @@ public class RequestService {
     /** Email que queda en la fila. Sin header, o en blanco, queda null. No se inventa un destinatario. */
     static String snapshotEmail(String headerEmail) {
         return blankToNull(headerEmail);
+    }
+
+    /**
+     * Label del tipo que queda en la fila. El header llega codificado en URL (UTF-8).
+     * Sin header, en blanco o mal codificado queda null, sin error. Se recorta y se trunca a 120.
+     */
+    static String snapshotProcedureLabel(String headerLabel) {
+        String raw = blankToNull(headerLabel);
+        if (raw == null) {
+            return null;
+        }
+        String decoded;
+        try {
+            decoded = blankToNull(URLDecoder.decode(raw, StandardCharsets.UTF_8));
+        } catch (IllegalArgumentException ex) {
+            return null;
+        }
+        if (decoded == null || decoded.length() <= PROCEDURE_LABEL_MAX) {
+            return decoded;
+        }
+        return decoded.substring(0, PROCEDURE_LABEL_MAX).trim();
     }
 
     private static String blankToNull(String value) {
