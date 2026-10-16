@@ -44,9 +44,13 @@ public class RequestController {
             @Valid @RequestBody CreateRequestDto body,
             @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
             @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles,
-            @RequestHeader(value = CallerContext.HEADER_USER_NAME, required = false) String userName
+            @RequestHeader(value = CallerContext.HEADER_USER_NAME, required = false) String userName,
+            @RequestHeader(value = CallerContext.HEADER_USER_EMAIL, required = false) String userEmail
     ) {
-        MunicipalRequest created = requestService.create(body, new CallerContext(userId, roles, userName));
+        MunicipalRequest created = requestService.create(
+                body,
+                new CallerContext(userId, roles, userName, userEmail)
+        );
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 

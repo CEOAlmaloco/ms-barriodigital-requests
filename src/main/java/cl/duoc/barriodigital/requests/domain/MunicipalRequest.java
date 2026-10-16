@@ -44,6 +44,13 @@ public class MunicipalRequest {
     @Column(name = "solicitante_nombre", length = 200)
     private String solicitanteNombre;
 
+    /**
+     * Snapshot del email al crear. No se vuelve a leer del JWT en los GET.
+     * Nullable: las filas anteriores a EP2-19 quedan en null y Hibernate update agrega la columna.
+     */
+    @Column(name = "solicitante_email", length = 254)
+    private String solicitanteEmail;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private RequestStatus status;
@@ -80,6 +87,18 @@ public class MunicipalRequest {
             String solicitanteId,
             String solicitanteNombre
     ) {
+        this(title, description, procedureType, address, solicitanteId, solicitanteNombre, null);
+    }
+
+    public MunicipalRequest(
+            String title,
+            String description,
+            String procedureType,
+            String address,
+            String solicitanteId,
+            String solicitanteNombre,
+            String solicitanteEmail
+    ) {
         this.id = UUID.randomUUID().toString();
         this.title = title;
         this.description = description;
@@ -87,6 +106,7 @@ public class MunicipalRequest {
         this.address = address;
         this.solicitanteId = solicitanteId;
         this.solicitanteNombre = solicitanteNombre;
+        this.solicitanteEmail = solicitanteEmail;
         this.status = RequestStatus.INGRESADO;
         Instant now = Instant.now();
         this.createdAt = now;
@@ -139,6 +159,10 @@ public class MunicipalRequest {
 
     public String getSolicitanteNombre() {
         return solicitanteNombre;
+    }
+
+    public String getSolicitanteEmail() {
+        return solicitanteEmail;
     }
 
     public RequestStatus getStatus() {

@@ -48,7 +48,8 @@ public class RequestService {
                 procedureType,
                 address,
                 caller.userId().trim(),
-                snapshotName(caller.userName(), caller.userId())
+                snapshotName(caller.userName(), caller.userId()),
+                snapshotEmail(caller.userEmail())
         );
         return repository.save(request);
     }
@@ -148,6 +149,11 @@ public class RequestService {
         }
         String fromId = blankToNull(solicitanteId);
         return fromId != null ? fromId : "Sin nombre";
+    }
+
+    /** Email que queda en la fila. Sin header, o en blanco, queda null. No se inventa un destinatario. */
+    static String snapshotEmail(String headerEmail) {
+        return blankToNull(headerEmail);
     }
 
     private static String blankToNull(String value) {

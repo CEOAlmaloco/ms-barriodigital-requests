@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -95,6 +96,70 @@ class RequestServiceTest {
 
         assertEquals("Alex Ampuero", created.getSolicitanteNombre());
         assertEquals("oid-1", created.getSolicitanteId());
+    }
+
+    @Test
+    void createGuardaElEmailDelHeader() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MunicipalRequest created = requestService.create(
+                new CreateRequestDto("Hueco", "bache", "Calle 1"),
+                new CallerContext("oid-1", "Vecino", "Alex Ampuero", "  vecino@example.com  ")
+        );
+
+        assertEquals("vecino@example.com", created.getSolicitanteEmail());
+        assertEquals("Alex Ampuero", created.getSolicitanteNombre());
+    }
+
+    @Test
+    void createSinHeaderDeEmailDejaNull() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MunicipalRequest sinHeader = requestService.create(
+                new CreateRequestDto("Hueco", "bache", "Calle 1"),
+                new CallerContext("oid-1", "Vecino", "Alex Ampuero")
+        );
+        MunicipalRequest enBlanco = requestService.create(
+                new CreateRequestDto("Hueco", "bache", "Calle 1"),
+                new CallerContext("oid-1", "Vecino", "Alex Ampuero", "   ")
+        );
+
+        assertNull(sinHeader.getSolicitanteEmail());
+        assertNull(enBlanco.getSolicitanteEmail());
+        assertEquals("Alex Ampuero", sinHeader.getSolicitanteNombre());
+    }
+
+    @Test
+    void getByIdDeTramiteAntiguoDevuelveEmailNullYNoLoRecalcula() {
+        MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-1", "Alex Ampuero");
+        when(repository.findById("id-1")).thenReturn(Optional.of(stored));
+
+        MunicipalRequest byId = requestService.getById(
+                "id-1",
+                new CallerContext("oid-1", "Vecino", "Otro", "otro@example.com")
+        );
+
+        assertNull(byId.getSolicitanteEmail());
+        assertEquals("Alex Ampuero", byId.getSolicitanteNombre());
+    }
+
+    @Test
+    void changeStatusNoPisaElEmailGuardado() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        MunicipalRequest stored = new MunicipalRequest(
+                "t", "d", "bache", "dir", "oid-1", "Alex Ampuero", "vecino@example.com"
+        );
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(stored));
+
+        MunicipalRequest updated = requestService.changeStatus(
+                "id-1",
+                "ADMITIDO",
+                null,
+                new CallerContext("func-1", "Funcionario", "Funcionario Nuevo", "func@example.com")
+        );
+
+        assertEquals(RequestStatus.ADMITIDO, updated.getStatus());
+        assertEquals("vecino@example.com", updated.getSolicitanteEmail());
     }
 
     @Test
