@@ -32,16 +32,22 @@ import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import java.net.ConnectException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
@@ -64,7 +70,7 @@ class EventPublisherTest {
                     "certificate.gen", "certificate.*", "email.dead", "crew.dead", "certificate.dead"));
 
     @ParameterizedTest
-    @ValueSource(strings = {"email.admitted", "email.resolved"})
+    @ValueSource(strings = {"email.admitted", "email.resolved", "email.visit", "crew.ticket"})
     void elJsonTraeElSobreYElMensajeEsPersistente(String type) throws Exception {
         RabbitTemplate template = mock(RabbitTemplate.class);
         EventPublisher publisher = new EventPublisher(template, names, mapper, Runnable::run);
@@ -76,7 +82,7 @@ class EventPublisherTest {
         ArgumentCaptor<Object> body = ArgumentCaptor.forClass(Object.class);
         ArgumentCaptor<MessagePostProcessor> processor = ArgumentCaptor.forClass(MessagePostProcessor.class);
         verify(template).convertAndSend(
-                org.mockito.ArgumentMatchers.eq("cmd.topic"),
+                eq(type.equals("crew.ticket") ? "cmd.direct" : "cmd.topic"),
                 org.mockito.ArgumentMatchers.eq(type),
                 body.capture(),
                 processor.capture(),
@@ -114,8 +120,88 @@ class EventPublisherTest {
         EventEnvelope first = (EventEnvelope) bodies.getAllValues().get(0);
         EventEnvelope second = (EventEnvelope) bodies.getAllValues().get(1);
         assertNotEquals(first.eventId(), second.eventId());
+        assertNotEquals(first.traceId(), second.traceId());
         assertEquals(first.eventId().toString(), correlations.getAllValues().get(0).getId());
         assertEquals(second.eventId().toString(), correlations.getAllValues().get(1).getId());
+    }
+
+    @Test
+    void elParComparteTrazaYSnapshotConDestinosConfiguradosEIdentidadPropia() {
+        RabbitTemplate template = mock(RabbitTemplate.class);
+        var configuredNames = new RabbitNamesProperties(
+                new Exchange("visita.topic", "visita.direct", "visita.dead"), names.queue(), names.routing());
+        List<Runnable> tasks = new ArrayList<>();
+        EventPublisher publisher = new EventPublisher(template, configuredNames, mapper, tasks::add);
+        UUID trace = UUID.randomUUID();
+        var payload = new RequestEventPayload("tramite", "tipo_nuevo", "Etiqueta guardada", "Direccion guardada", null);
+        publisher.publish("crew.ticket", "tramite", payload, trace);
+        publisher.publish("email.visit", "tramite", payload, trace);
+        assertEquals(2, tasks.size());
+        verify(template, times(0)).convertAndSend(anyString(), anyString(), any(),
+                any(MessagePostProcessor.class), any(CorrelationData.class));
+        tasks.forEach(Runnable::run);
+        ArgumentCaptor<Object> crew = ArgumentCaptor.forClass(Object.class);
+        ArgumentCaptor<Object> email = ArgumentCaptor.forClass(Object.class);
+        verify(template).convertAndSend(eq("visita.direct"), eq("crew.ticket"), crew.capture(),
+                any(MessagePostProcessor.class), any(CorrelationData.class));
+        verify(template).convertAndSend(eq("visita.topic"), eq("email.visit"), email.capture(),
+                any(MessagePostProcessor.class), any(CorrelationData.class));
+        EventEnvelope first = (EventEnvelope) crew.getValue();
+        EventEnvelope second = (EventEnvelope) email.getValue();
+        assertNotEquals(first.eventId(), second.eventId());
+        assertEquals(trace, first.traceId());
+        assertEquals(trace, second.traceId());
+        assertEquals("tramite", first.correlationId());
+        assertEquals(first.correlationId(), second.correlationId());
+        assertSame(payload, first.payload());
+        assertSame(payload, second.payload());
+    }
+
+    @Test
+    void falloDelPrimerEnvioNoImpideIntentarElSegundo() {
+        RabbitTemplate template = mock(RabbitTemplate.class);
+        doThrow(new AmqpConnectException(new ConnectException("fallo controlado")))
+                .when(template).convertAndSend(eq("cmd.direct"), eq("crew.ticket"), any(),
+                        any(MessagePostProcessor.class), any(CorrelationData.class));
+        List<Runnable> tasks = new ArrayList<>();
+        EventPublisher publisher = new EventPublisher(template, names, mapper, tasks::add);
+        UUID trace = UUID.randomUUID();
+        publisher.publish("crew.ticket", "tramite", Map.of(), trace);
+        publisher.publish("email.visit", "tramite", Map.of(), trace);
+        assertEquals(2, tasks.size());
+        tasks.forEach(Runnable::run);
+        verify(template).convertAndSend(eq("cmd.direct"), eq("crew.ticket"), any(),
+                any(MessagePostProcessor.class), any(CorrelationData.class));
+        verify(template).convertAndSend(eq("cmd.topic"), eq("email.visit"), any(),
+                any(MessagePostProcessor.class), any(CorrelationData.class));
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void rechazoDeLaPrimeraTareaNoSuprimeElSegundoIntentoDeEncolado(boolean rejectBoth) {
+        RabbitTemplate template = mock(RabbitTemplate.class);
+        AtomicInteger submissions = new AtomicInteger();
+        List<Runnable> tasks = new ArrayList<>();
+        EventPublisher publisher = new EventPublisher(template, names, mapper, task -> {
+            if (submissions.getAndIncrement() == 0 || rejectBoth) throw new RejectedExecutionException("saturado");
+            tasks.add(task);
+        });
+        ListAppender<ILoggingEvent> logs = attachLogs();
+        try {
+            UUID trace = UUID.randomUUID();
+            publisher.publish("crew.ticket", "tramite", Map.of(), trace);
+            publisher.publish("email.visit", "tramite", Map.of(), trace);
+            assertEquals(2, submissions.get());
+            assertEquals(rejectBoth ? 0 : 1, tasks.size());
+            assertEquals(rejectBoth ? 2 : 1, logs.list.stream()
+                    .filter(event -> event.getFormattedMessage().contains("No se pudo encolar la publicacion")).count());
+            tasks.forEach(Runnable::run);
+            verify(template, times(rejectBoth ? 0 : 1)).convertAndSend(eq("cmd.topic"), eq("email.visit"), any(),
+                    any(MessagePostProcessor.class), any(CorrelationData.class));
+        } finally {
+            ((Logger) LoggerFactory.getLogger(EventPublisher.class)).detachAppender(logs);
+            logs.stop();
+        }
     }
 
     @Test
@@ -135,17 +221,17 @@ class EventPublisherTest {
 
     @Test
     void siElBrokerNoRespondeNoLanzaYVuelveEnMenosDeUnSegundo() throws Exception {
-        AtomicBoolean blockedInConnect = new AtomicBoolean(false);
-        AtomicBoolean connectFinished = new AtomicBoolean(false);
+        CountDownLatch entered = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch finished = new CountDownLatch(1);
         ConnectionFactory factory = mock(ConnectionFactory.class);
         when(factory.createConnection()).thenAnswer(invocation -> {
-            blockedInConnect.set(true);
+            entered.countDown();
             try {
-                Thread.sleep(5_000);
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
+                if (!release.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("no se libero la conexion");
+            } finally {
+                finished.countDown();
             }
-            connectFinished.set(true);
             throw new AmqpConnectException(new ConnectException("broker inalcanzable"));
         });
         RabbitTemplate template = new RabbitTemplate(factory);
@@ -157,14 +243,18 @@ class EventPublisherTest {
         });
         EventPublisher publisher = new EventPublisher(template, names, mapper, executor);
 
-        long start = System.nanoTime();
-        assertDoesNotThrow(() -> publisher.publish("email.admitted", "tramite-1", Map.of()));
-        long elapsedMs = (System.nanoTime() - start) / 1_000_000;
-
-        assertTrue(elapsedMs < 1_000, "el publicador tardo " + elapsedMs + " ms");
-        Thread.sleep(300);
-        assertTrue(blockedInConnect.get(), "el hilo de la peticion no debio esperar, pero el worker tampoco llego a conectar");
-        assertFalse(connectFinished.get(), "la conexion de 5 s no debio terminar antes de que volviera quien llamo");
+        try {
+            long start = System.nanoTime();
+            assertDoesNotThrow(() -> publisher.publish("email.admitted", "tramite-1", Map.of()));
+            long elapsedMs = (System.nanoTime() - start) / 1_000_000;
+            assertTrue(elapsedMs < 1_000, "el publicador tardo " + elapsedMs + " ms");
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            assertEquals(1, finished.getCount(), "el llamador debe volver con la conexion aun bloqueada");
+        } finally {
+            release.countDown();
+            executor.shutdown();
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS));
+        }
     }
 
     @Test

@@ -9,6 +9,7 @@ import cl.duoc.barriodigital.requests.web.CallerContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -21,7 +22,9 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.server.ResponseStatusException;
 
+import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
@@ -34,6 +37,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -54,7 +58,8 @@ class RequestStatusEventsTransactionTest {
     private final CallerContext funcionario = new CallerContext("func", "Funcionario");
 
     @ParameterizedTest
-    @CsvSource({"INGRESADO,ADMITIDO,email.admitted", "EN_TERRENO,RESUELTO,email.resolved"})
+    @CsvSource({"INGRESADO,ADMITIDO,email.admitted", "EN_TERRENO,RESUELTO,email.resolved",
+            "EN_GESTION,EN_TERRENO,crew.ticket"})
     void esperaCommitExteriorYLaFilaYaEsVisibleEnOtraTransaccion(
             RequestStatus from, RequestStatus target, String type) throws Exception {
         MunicipalRequest initial = create(from);
@@ -65,13 +70,12 @@ class RequestStatusEventsTransactionTest {
                 assertEquals(target, reader.submit(() -> new TransactionTemplate(transactions).execute(tx ->
                         repository.findById(initial.getId()).orElseThrow().getStatus())).get(5, TimeUnit.SECONDS));
                 return null;
-            }).when(publisher).publish(eq(type), eq(initial.getId()), any());
+            }).when(publisher).publish(anyString(), eq(initial.getId()), any(), any(UUID.class));
             new TransactionTemplate(transactions).executeWithoutResult(tx -> {
                 service.changeStatus(initial.getId(), target.name(), null, funcionario);
                 verifyNoInteractions(publisher);
             });
-            verify(publisher).publish(type, initial.getId(), payload(initial));
-            verifyNoMoreInteractions(publisher);
+            verifyEvents(type, initial);
         } finally {
             reader.shutdownNow();
             assertTrue(reader.awaitTermination(5, TimeUnit.SECONDS));
@@ -79,7 +83,7 @@ class RequestStatusEventsTransactionTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"INGRESADO,ADMITIDO", "EN_TERRENO,RESUELTO"})
+    @CsvSource({"INGRESADO,ADMITIDO", "EN_TERRENO,RESUELTO", "EN_GESTION,EN_TERRENO"})
     void rollbackExteriorNoPublica(RequestStatus from, String target) {
         MunicipalRequest initial = create(from);
         new TransactionTemplate(transactions).executeWithoutResult(tx -> {
@@ -90,43 +94,67 @@ class RequestStatusEventsTransactionTest {
         assertEquals(from, repository.findById(initial.getId()).orElseThrow().getStatus());
     }
 
-    @Test
-    void restriccionRealDeBaseDeDatosImpideCommitYSuPublicacion() {
-        MunicipalRequest initial = create(RequestStatus.INGRESADO);
+    @ParameterizedTest
+    @CsvSource({"INGRESADO,ADMITIDO", "EN_TERRENO,RESUELTO", "EN_GESTION,EN_TERRENO"})
+    void restriccionRealDeBaseDeDatosImpideCommitYSuPublicacion(RequestStatus from, String target) {
+        MunicipalRequest initial = create(from);
         jdbc.execute("alter table municipal_requests add constraint ep222_commit_failure check (id <> '"
-                + initial.getId() + "' or status <> 'ADMITIDO')");
+                + initial.getId() + "' or status <> '" + target + "')");
         try {
             assertThrows(RuntimeException.class, () -> new TransactionTemplate(transactions).executeWithoutResult(tx -> {
-                service.changeStatus(initial.getId(), "ADMITIDO", null, funcionario);
+                service.changeStatus(initial.getId(), target, null, funcionario);
                 verifyNoInteractions(publisher);
                 // El UPDATE sigue pendiente: la restricción se evalúa al hacer flush durante el commit.
             }));
             verifyNoInteractions(publisher);
-            assertEquals(RequestStatus.INGRESADO, repository.findById(initial.getId()).orElseThrow().getStatus());
+            assertEquals(from, repository.findById(initial.getId()).orElseThrow().getStatus());
         } finally {
             jdbc.execute("alter table municipal_requests drop constraint ep222_commit_failure");
         }
     }
 
-    @Test
-    void snapshotNoDependeDelObjetoQueRetornoElServicio() {
-        MunicipalRequest initial = create(RequestStatus.INGRESADO);
+    @ParameterizedTest
+    @CsvSource({"INGRESADO,ADMITIDO,email.admitted", "EN_TERRENO,RESUELTO,email.resolved",
+            "EN_GESTION,EN_TERRENO,crew.ticket"})
+    void snapshotNoDependeDelObjetoQueRetornoElServicio(RequestStatus from, String target, String type) {
+        MunicipalRequest initial = create(from);
         new TransactionTemplate(transactions).executeWithoutResult(tx -> {
-            MunicipalRequest changed = service.changeStatus(initial.getId(), "ADMITIDO", null, funcionario);
+            MunicipalRequest changed = service.changeStatus(initial.getId(), target, null, funcionario);
             ReflectionTestUtils.setField(changed, "procedureLabel", "Etiqueta posterior");
             ReflectionTestUtils.setField(changed, "solicitanteEmail", "posterior@example.com");
             ReflectionTestUtils.setField(changed, "address", "Direccion posterior");
         });
-        verify(publisher).publish("email.admitted", initial.getId(), payload(initial));
+        verifyEvents(type, initial);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"INGRESADO,ADMITIDO,email.admitted", "EN_TERRENO,RESUELTO,email.resolved",
+            "EN_GESTION,EN_TERRENO,crew.ticket"})
+    void falloDeEntregaPosteriorNoOcultaNiRevierteElCommit(RequestStatus from, RequestStatus target, String type) {
+        MunicipalRequest initial = create(from);
+        doThrow(new IllegalStateException("fallo controlado de entrega"))
+                .when(publisher).publish(eq(type), anyString(), any(), any(UUID.class));
+        assertDoesNotThrow(() -> service.changeStatus(initial.getId(), target.name(), null, funcionario));
+        assertEquals(target, repository.findById(initial.getId()).orElseThrow().getStatus());
+        verifyEvents(type, initial);
     }
 
     @Test
-    void falloDeEntregaPosteriorNoOcultaNiRevierteElCommit() {
-        MunicipalRequest initial = create(RequestStatus.INGRESADO);
-        doThrow(new IllegalStateException("fallo controlado de entrega"))
-                .when(publisher).publish(anyString(), anyString(), any());
-        assertDoesNotThrow(() -> service.changeStatus(initial.getId(), "ADMITIDO", null, funcionario));
-        assertEquals(RequestStatus.ADMITIDO, repository.findById(initial.getId()).orElseThrow().getStatus());
+    void repeticionYSaltoInvalidoNoPublicanElPar() {
+        MunicipalRequest initial = create(RequestStatus.EN_GESTION);
+        service.changeStatus(initial.getId(), "EN_TERRENO", null, funcionario);
+        verifyEvents("crew.ticket", initial);
+        clearInvocations(publisher);
+        ResponseStatusException repeated = assertThrows(ResponseStatusException.class,
+                () -> service.changeStatus(initial.getId(), "EN_TERRENO", null, funcionario));
+        assertEquals(409, repeated.getStatusCode().value());
+        MunicipalRequest ingresado = create(RequestStatus.INGRESADO);
+        ResponseStatusException invalid = assertThrows(ResponseStatusException.class,
+                () -> service.changeStatus(ingresado.getId(), "EN_TERRENO", null, funcionario));
+        assertEquals(409, invalid.getStatusCode().value());
+        verifyNoInteractions(publisher);
+        assertEquals(RequestStatus.EN_TERRENO, repository.findById(initial.getId()).orElseThrow().getStatus());
+        assertEquals(RequestStatus.INGRESADO, repository.findById(ingresado.getId()).orElseThrow().getStatus());
     }
 
     @Test
@@ -136,6 +164,15 @@ class RequestStatusEventsTransactionTest {
         service.list(null, null, null, funcionario);
         service.create(new cl.duoc.barriodigital.requests.web.dto.CreateRequestDto("d", "bache", "dir"), funcionario);
         verifyNoInteractions(publisher);
+    }
+
+    private void verifyEvents(String type, MunicipalRequest initial) {
+        ArgumentCaptor<UUID> trace = ArgumentCaptor.forClass(UUID.class);
+        verify(publisher).publish(eq(type), eq(initial.getId()), eq(payload(initial)), trace.capture());
+        if (type.equals("crew.ticket")) {
+            verify(publisher).publish(eq("email.visit"), eq(initial.getId()), eq(payload(initial)), eq(trace.getValue()));
+        }
+        verifyNoMoreInteractions(publisher);
     }
 
     private MunicipalRequest create(RequestStatus status) {

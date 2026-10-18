@@ -47,20 +47,24 @@ public class EventPublisher {
     }
 
     public void publish(String type, String correlationId, Object payload) {
+        publish(type, correlationId, payload, UUID.randomUUID());
+    }
+
+    public void publish(String type, String correlationId, Object payload, UUID traceId) {
         try {
-            executor.execute(() -> sendQuietly(type, correlationId, payload));
+            executor.execute(() -> sendQuietly(type, correlationId, payload, traceId));
         } catch (RuntimeException ex) {
             log.error("No se pudo encolar la publicacion type={} correlationId={}", type, correlationId, ex);
         }
     }
 
-    private void sendQuietly(String type, String correlationId, Object payload) {
+    private void sendQuietly(String type, String correlationId, Object payload, UUID traceId) {
         try {
             EventEnvelope envelope = new EventEnvelope(
                     type,
                     UUID.randomUUID(),
                     Instant.now(),
-                    UUID.randomUUID(),
+                    traceId,
                     correlationId,
                     payload);
             Destination destination = destination(type);
