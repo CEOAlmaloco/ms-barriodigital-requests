@@ -2,9 +2,13 @@ package cl.duoc.barriodigital.requests.service;
 
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
+import cl.duoc.barriodigital.requests.messaging.EventPublisher;
+import cl.duoc.barriodigital.requests.messaging.RequestEventPayload;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
-import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
@@ -24,6 +28,9 @@ import java.util.concurrent.TimeoutException;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 
 /** Transacciones reales en H2; no valida el entorno Oracle desplegado. */
 @DataJpaTest
@@ -40,10 +47,16 @@ class RequestStatusConcurrencyTest {
     @Autowired
     PlatformTransactionManager transactions;
 
-    @Test
-    void dosAdmisionesDelMismoTramiteSoloPersistenUnaTransicion() throws Exception {
-        MunicipalRequest created = repository.saveAndFlush(
-                new MunicipalRequest("t", "d", "bache", "dir", "vecino"));
+    @MockBean
+    EventPublisher publisher;
+
+    @ParameterizedTest
+    @CsvSource({"INGRESADO,ADMITIDO,email.admitted", "EN_TERRENO,RESUELTO,email.resolved"})
+    void dosIntentosDelMismoTramiteSoloPersistenYPublicanUnaTransicion(
+            RequestStatus from, RequestStatus target, String type) throws Exception {
+        MunicipalRequest initial = new MunicipalRequest("t", "d", "bache", "dir", "vecino");
+        initial.setStatus(from);
+        MunicipalRequest created = repository.saveAndFlush(initial);
         String id = created.getId();
         CallerContext caller = new CallerContext("func-1", "Funcionario");
         CountDownLatch changed = new CountDownLatch(1);
@@ -52,7 +65,7 @@ class RequestStatusConcurrencyTest {
         var pool = Executors.newFixedThreadPool(2);
         try {
             var first = pool.submit(() -> new TransactionTemplate(transactions).execute(tx -> {
-                service.changeStatus(id, "ADMITIDO", null, caller);
+                service.changeStatus(id, target.name(), null, caller);
                 changed.countDown();
                 await(commit);
                 return 200;
@@ -61,20 +74,23 @@ class RequestStatusConcurrencyTest {
             var second = pool.submit(() -> {
                 secondStarted.countDown();
                 try {
-                    service.changeStatus(id, "ADMITIDO", null, caller);
+                    service.changeStatus(id, target.name(), null, caller);
                     return 200;
                 } catch (ResponseStatusException ex) {
-                    assertEquals("No se puede pasar de ADMITIDO a ADMITIDO", ex.getReason());
+                    assertEquals("No se puede pasar de " + target + " a " + target, ex.getReason());
                     return ex.getStatusCode().value();
                 }
             });
             assertTrue(secondStarted.await(5, TimeUnit.SECONDS));
             // La primera transacción sigue abierta: la segunda no debe terminar aún.
             assertThrows(TimeoutException.class, () -> second.get(200, TimeUnit.MILLISECONDS));
+            verifyNoInteractions(publisher);
             commit.countDown();
             assertEquals(200, first.get(5, TimeUnit.SECONDS));
             assertEquals(409, second.get(5, TimeUnit.SECONDS));
-            assertEquals(RequestStatus.ADMITIDO, repository.findById(id).orElseThrow().getStatus());
+            assertEquals(target, repository.findById(id).orElseThrow().getStatus());
+            verify(publisher).publish(type, id, new RequestEventPayload(id, "bache", null, "dir", null));
+            verifyNoMoreInteractions(publisher);
         } finally {
             commit.countDown();
             pool.shutdownNow();

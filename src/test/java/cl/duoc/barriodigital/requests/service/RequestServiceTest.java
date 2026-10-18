@@ -2,16 +2,24 @@ package cl.duoc.barriodigital.requests.service;
 
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
+import cl.duoc.barriodigital.requests.messaging.EventPublisher;
+import cl.duoc.barriodigital.requests.messaging.RequestEventPayload;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -27,6 +35,7 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verifyNoInteractions;
 
 @ExtendWith(MockitoExtension.class)
 class RequestServiceTest {
@@ -34,8 +43,88 @@ class RequestServiceTest {
     @Mock
     private MunicipalRequestRepository repository;
 
+    @Mock
+    private EventPublisher publisher;
+
     @InjectMocks
     private RequestService requestService;
+
+    // Solo inspecciona el registro y el snapshot. Las garantías de commit se prueban con JPA/H2.
+    @BeforeEach
+    void synchronizationForUnitTests() {
+        TransactionSynchronizationManager.setActualTransactionActive(true);
+        TransactionSynchronizationManager.initSynchronization();
+    }
+
+    @AfterEach
+    void clearSynchronization() {
+        TransactionSynchronizationManager.clear();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"INGRESADO,ADMITIDO,email.admitted", "EN_TERRENO,RESUELTO,email.resolved"})
+    void registraSnapshotInmutableSoloParaDespuesDelCommit(RequestStatus from, String target, String type) {
+        MunicipalRequest stored = new MunicipalRequest("titulo ajeno", "d", "nuevo_tipo", "direccion original",
+                "vecino", "Vecino", "vecino@example.com", "Etiqueta original");
+        stored.setStatus(from);
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
+        when(repository.save(stored)).thenReturn(stored);
+        RequestEventPayload expected = new RequestEventPayload(stored.getId(), "nuevo_tipo", "Etiqueta original",
+                "direccion original", "vecino@example.com");
+
+        requestService.changeStatus("id", target, null,
+                new CallerContext("func", "Funcionario", "Funcionario", "func@example.com", "Otra etiqueta"));
+        verifyNoInteractions(publisher);
+        ReflectionTestUtils.setField(stored, "procedureLabel", "cambiada");
+        ReflectionTestUtils.setField(stored, "solicitanteEmail", "otro@example.com");
+        ReflectionTestUtils.setField(stored, "address", "otra direccion");
+        TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
+        verify(publisher).publish(type, expected.requestId(), expected);
+    }
+
+    @Test
+    void publicaTambienLosSnapshotsNulos() {
+        MunicipalRequest stored = requestWithStatus(RequestStatus.INGRESADO);
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
+        when(repository.save(stored)).thenReturn(stored);
+        requestService.changeStatus("id", "ADMITIDO", null, new CallerContext("func", "Funcionario"));
+        TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
+        verify(publisher).publish("email.admitted", stored.getId(),
+                new RequestEventPayload(stored.getId(), "bache", null, "dir", null));
+    }
+
+    @Test
+    void noPublicaInmediatamenteSinTransaccion() {
+        TransactionSynchronizationManager.clear();
+        MunicipalRequest stored = requestWithStatus(RequestStatus.INGRESADO);
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
+        when(repository.save(stored)).thenReturn(stored);
+        assertThrows(IllegalStateException.class, () -> requestService.changeStatus("id", "ADMITIDO", null,
+                new CallerContext("func", "Funcionario")));
+        verifyNoInteractions(publisher);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"ADMITIDO,EN_GESTION", "EN_GESTION,EN_TERRENO", "INGRESADO,RECHAZADO",
+            "ADMITIDO,RECHAZADO", "EN_GESTION,RECHAZADO", "EN_TERRENO,RECHAZADO"})
+    void otrasTransicionesNoRegistranEmail(RequestStatus from, String target) {
+        MunicipalRequest stored = requestWithStatus(from);
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
+        when(repository.save(stored)).thenReturn(stored);
+        requestService.changeStatus("id", target, "motivo", new CallerContext("func", "Funcionario"));
+        assertTrue(TransactionSynchronizationManager.getSynchronizations().isEmpty());
+        verifyNoInteractions(publisher);
+    }
+
+    @Test
+    void estadoRepetidoNoRegistraEmail() {
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(requestWithStatus(RequestStatus.ADMITIDO)));
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> requestService.changeStatus("id", "ADMITIDO", null, new CallerContext("func", "Funcionario")));
+        assertEquals(409, ex.getStatusCode().value());
+        assertTrue(TransactionSynchronizationManager.getSynchronizations().isEmpty());
+        verifyNoInteractions(publisher);
+    }
 
     @Test
     void createAutogeneraTitleYGuardaSolicitante() {
