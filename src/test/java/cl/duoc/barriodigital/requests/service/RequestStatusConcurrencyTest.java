@@ -8,6 +8,7 @@ import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -28,6 +30,7 @@ import java.util.concurrent.TimeoutException;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
@@ -51,7 +54,8 @@ class RequestStatusConcurrencyTest {
     EventPublisher publisher;
 
     @ParameterizedTest
-    @CsvSource({"INGRESADO,ADMITIDO,email.admitted", "EN_TERRENO,RESUELTO,email.resolved"})
+    @CsvSource({"INGRESADO,ADMITIDO,email.admitted", "EN_TERRENO,RESUELTO,email.resolved",
+            "EN_GESTION,EN_TERRENO,crew.ticket"})
     void dosIntentosDelMismoTramiteSoloPersistenYPublicanUnaTransicion(
             RequestStatus from, RequestStatus target, String type) throws Exception {
         MunicipalRequest initial = new MunicipalRequest("t", "d", "bache", "dir", "vecino");
@@ -89,7 +93,13 @@ class RequestStatusConcurrencyTest {
             assertEquals(200, first.get(5, TimeUnit.SECONDS));
             assertEquals(409, second.get(5, TimeUnit.SECONDS));
             assertEquals(target, repository.findById(id).orElseThrow().getStatus());
-            verify(publisher).publish(type, id, new RequestEventPayload(id, "bache", null, "dir", null));
+            // Son llamadas al publicador simulado, no recepciones verificadas en un broker.
+            ArgumentCaptor<UUID> trace = ArgumentCaptor.forClass(UUID.class);
+            RequestEventPayload payload = new RequestEventPayload(id, "bache", null, "dir", null);
+            verify(publisher).publish(eq(type), eq(id), eq(payload), trace.capture());
+            if (target == RequestStatus.EN_TERRENO) {
+                verify(publisher).publish(eq("email.visit"), eq(id), eq(payload), eq(trace.getValue()));
+            }
             verifyNoMoreInteractions(publisher);
         } finally {
             commit.countDown();

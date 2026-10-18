@@ -62,11 +62,11 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 /** HTTP real, JPA/H2 real y ejecutor de producción; el transporte Rabbit se simula. */
-@SpringBootTest(classes = RequestStatusEmailHttpTest.Application.class,
+@SpringBootTest(classes = RequestStatusEventsHttpTest.Application.class,
         webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT,
         properties = "spring.datasource.url=jdbc:h2:mem:ep222-http;DB_CLOSE_DELAY=-1")
 @ActiveProfiles("h2-integration")
-class RequestStatusEmailHttpTest {
+class RequestStatusEventsHttpTest {
 
     @Autowired TestRestTemplate http;
     @Autowired MunicipalRequestRepository repository;
@@ -98,19 +98,21 @@ class RequestStatusEmailHttpTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"INGRESADO,ADMITIDO,email.admitted", "EN_TERRENO,RESUELTO,email.resolved"})
+    @CsvSource({"INGRESADO,ADMITIDO,email.admitted", "EN_TERRENO,RESUELTO,email.resolved",
+            "EN_GESTION,EN_TERRENO,crew.ticket"})
     void httpTerminaAntesDeLiberarEnvioYElFalloPosteriorNoRevierte(
             RequestStatus from, RequestStatus target, String type) throws Exception {
         MunicipalRequest initial = create(from);
-        CountDownLatch entered = new CountDownLatch(1);
+        int messages = target == RequestStatus.EN_TERRENO ? 2 : 1;
+        CountDownLatch entered = new CountDownLatch(messages);
         CountDownLatch release = new CountDownLatch(1);
-        CountDownLatch exited = new CountDownLatch(1);
-        AtomicReference<Thread> worker = new AtomicReference<>();
+        CountDownLatch exited = new CountDownLatch(messages);
+        var workers = new ConcurrentLinkedQueue<Thread>();
         AtomicReference<RequestStatus> visible = new AtomicReference<>();
-        AtomicReference<Boolean> transactionActive = new AtomicReference<>();
+        var transactionsActive = new ConcurrentLinkedQueue<Boolean>();
         doAnswer(invocation -> {
-            worker.set(Thread.currentThread());
-            transactionActive.set(TransactionSynchronizationManager.isActualTransactionActive());
+            workers.add(Thread.currentThread());
+            transactionsActive.add(TransactionSynchronizationManager.isActualTransactionActive());
             visible.set(readStatus(initial.getId()));
             entered.countDown();
             try {
@@ -119,7 +121,7 @@ class RequestStatusEmailHttpTest {
             } finally {
                 exited.countDown();
             }
-        }).when(template).convertAndSend(eq("cmd.topic"), eq(type), any(), any(MessagePostProcessor.class), any(CorrelationData.class));
+        }).when(template).convertAndSend(anyString(), anyString(), any(), any(MessagePostProcessor.class), any(CorrelationData.class));
 
         try {
             long start = System.nanoTime();
@@ -129,36 +131,49 @@ class RequestStatusEmailHttpTest {
             assertTrue(millis < 2_000, "PUT tardo " + millis + " ms");
             assertTrue(entered.await(5, TimeUnit.SECONDS), "el worker no entro al envio");
             assertEquals(1, release.getCount(), "el HTTP debe terminar sin liberar el envio");
-            assertEquals(1, exited.getCount());
+            assertEquals(messages, exited.getCount());
             assertNotNull(Application.HTTP_THREAD.get());
-            assertNotSame(Application.HTTP_THREAD.get(), worker.get());
-            assertTrue(worker.get().getName().startsWith("event-publisher-"));
-            assertEquals(Boolean.FALSE, transactionActive.get());
+            assertEquals(messages, workers.size());
+            workers.forEach(worker -> {
+                assertNotSame(Application.HTTP_THREAD.get(), worker);
+                assertTrue(worker.getName().startsWith("event-publisher-"));
+            });
+            assertTrue(transactionsActive.stream().allMatch(active -> !active));
             assertEquals(target, visible.get());
             assertEquals(target, readStatus(initial.getId()));
-            System.out.println("EP2-22 HTTP transporte bloqueado " + type + " status=200 ms=" + millis);
         } finally {
             release.countDown();
             assertTrue(exited.await(5, TimeUnit.SECONDS));
             drainWorkers();
         }
         assertTrue(logs.stream().anyMatch(line -> line.contains("No se pudo publicar type=" + type)));
+        if (target == RequestStatus.EN_TERRENO) {
+            assertTrue(logs.stream().anyMatch(line -> line.contains("No se pudo publicar type=email.visit")));
+        }
         assertEquals(target, readStatus(initial.getId()));
     }
 
     @ParameterizedTest
-    @CsvSource({"INGRESADO,ADMITIDO", "EN_TERRENO,RESUELTO"})
+    @CsvSource({"INGRESADO,ADMITIDO", "EN_TERRENO,RESUELTO", "EN_GESTION,EN_TERRENO"})
     void ejecutorSaturadoNoEnviaEnHttpYConserva200(RequestStatus from, RequestStatus target) throws Exception {
         MunicipalRequest initial = create(from);
         CountDownLatch release = new CountDownLatch(1);
         CountDownLatch workers = new CountDownLatch(4);
+        ThreadPoolTaskExecutor pool = (ThreadPoolTaskExecutor) executor;
+        int existingWorkers = Math.max(pool.getPoolSize(), pool.getCorePoolSize());
+        CountDownLatch occupied = new CountDownLatch(existingWorkers);
+        Runnable block = () -> {
+            workers.countDown();
+            occupied.countDown();
+            try { release.await(10, TimeUnit.SECONDS); }
+            catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
+        };
         try {
-            // 4 workers + 200 en cola: la siguiente entrega usa el rechazo real de producción.
-            for (int i = 0; i < 204; i++) executor.execute(() -> {
-                workers.countDown();
-                try { release.await(10, TimeUnit.SECONDS); }
-                catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
-            });
+            // Ocupa primero los workers existentes para no competir con su toma de tareas de la cola.
+            for (int i = 0; i < existingWorkers; i++) executor.execute(block);
+            assertTrue(occupied.await(5, TimeUnit.SECONDS));
+            for (int i = 0; i < 200; i++) executor.execute(block);
+            for (int i = existingWorkers; i < 4; i++) executor.execute(block);
             assertTrue(workers.await(5, TimeUnit.SECONDS));
             long start = System.nanoTime();
             assertEquals(HttpStatus.OK, put(initial.getId(), target).getStatusCode());
@@ -166,8 +181,8 @@ class RequestStatusEmailHttpTest {
             assertTrue(millis < 2_000, "PUT tardo " + millis + " ms");
             assertEquals(target, readStatus(initial.getId()));
             verify(template, never()).convertAndSend(anyString(), anyString(), any(), any(MessagePostProcessor.class), any(CorrelationData.class));
-            assertTrue(logs.stream().anyMatch(line -> line.contains("No se pudo encolar la publicacion")));
-            System.out.println("EP2-22 HTTP ejecutor rechazante " + target + " status=200 ms=" + millis);
+            assertEquals(target == RequestStatus.EN_TERRENO ? 2 : 1, logs.stream()
+                    .filter(line -> line.contains("No se pudo encolar la publicacion")).count());
         } finally {
             release.countDown();
             drainWorkers();

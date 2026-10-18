@@ -24,11 +24,15 @@ import org.springframework.test.util.ReflectionTestUtils;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
@@ -62,7 +66,8 @@ class RequestServiceTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"INGRESADO,ADMITIDO,email.admitted", "EN_TERRENO,RESUELTO,email.resolved"})
+    @CsvSource({"INGRESADO,ADMITIDO,email.admitted", "EN_TERRENO,RESUELTO,email.resolved",
+            "EN_GESTION,EN_TERRENO,crew.ticket"})
     void registraSnapshotInmutableSoloParaDespuesDelCommit(RequestStatus from, String target, String type) {
         MunicipalRequest stored = new MunicipalRequest("titulo ajeno", "d", "nuevo_tipo", "direccion original",
                 "vecino", "Vecino", "vecino@example.com", "Etiqueta original");
@@ -75,39 +80,56 @@ class RequestServiceTest {
         requestService.changeStatus("id", target, null,
                 new CallerContext("func", "Funcionario", "Funcionario", "func@example.com", "Otra etiqueta"));
         verifyNoInteractions(publisher);
+        assertEquals(1, TransactionSynchronizationManager.getSynchronizations().size());
         ReflectionTestUtils.setField(stored, "procedureLabel", "cambiada");
         ReflectionTestUtils.setField(stored, "solicitanteEmail", "otro@example.com");
         ReflectionTestUtils.setField(stored, "address", "otra direccion");
         TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
-        verify(publisher).publish(type, expected.requestId(), expected);
+        ArgumentCaptor<UUID> trace = ArgumentCaptor.forClass(UUID.class);
+        ArgumentCaptor<Object> snapshot = ArgumentCaptor.forClass(Object.class);
+        verify(publisher).publish(eq(type), eq(expected.requestId()), snapshot.capture(), trace.capture());
+        assertEquals(expected, snapshot.getValue());
+        if (from == RequestStatus.EN_GESTION) {
+            verify(publisher).publish(eq("email.visit"), eq(expected.requestId()),
+                    org.mockito.ArgumentMatchers.same(snapshot.getValue()), eq(trace.getValue()));
+        }
+        verifyNoMoreInteractions(publisher);
     }
 
-    @Test
-    void publicaTambienLosSnapshotsNulos() {
-        MunicipalRequest stored = requestWithStatus(RequestStatus.INGRESADO);
+    @ParameterizedTest
+    @CsvSource({"INGRESADO,ADMITIDO,email.admitted", "EN_GESTION,EN_TERRENO,crew.ticket"})
+    void publicaTambienLosSnapshotsNulos(RequestStatus from, String target, String type) {
+        MunicipalRequest stored = requestWithStatus(from);
         when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
         when(repository.save(stored)).thenReturn(stored);
-        requestService.changeStatus("id", "ADMITIDO", null, new CallerContext("func", "Funcionario"));
+        requestService.changeStatus("id", target, null, new CallerContext("func", "Funcionario"));
         TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
-        verify(publisher).publish("email.admitted", stored.getId(),
-                new RequestEventPayload(stored.getId(), "bache", null, "dir", null));
+        ArgumentCaptor<UUID> trace = ArgumentCaptor.forClass(UUID.class);
+        verify(publisher).publish(eq(type), eq(stored.getId()),
+                eq(new RequestEventPayload(stored.getId(), "bache", null, "dir", null)), trace.capture());
+        if (from == RequestStatus.EN_GESTION) {
+            verify(publisher).publish(eq("email.visit"), eq(stored.getId()),
+                    eq(new RequestEventPayload(stored.getId(), "bache", null, "dir", null)), eq(trace.getValue()));
+        }
+        verifyNoMoreInteractions(publisher);
     }
 
-    @Test
-    void noPublicaInmediatamenteSinTransaccion() {
+    @ParameterizedTest
+    @CsvSource({"INGRESADO,ADMITIDO", "EN_GESTION,EN_TERRENO"})
+    void noPublicaInmediatamenteSinTransaccion(RequestStatus from, String target) {
         TransactionSynchronizationManager.clear();
-        MunicipalRequest stored = requestWithStatus(RequestStatus.INGRESADO);
+        MunicipalRequest stored = requestWithStatus(from);
         when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
         when(repository.save(stored)).thenReturn(stored);
-        assertThrows(IllegalStateException.class, () -> requestService.changeStatus("id", "ADMITIDO", null,
+        assertThrows(IllegalStateException.class, () -> requestService.changeStatus("id", target, null,
                 new CallerContext("func", "Funcionario")));
         verifyNoInteractions(publisher);
     }
 
     @ParameterizedTest
-    @CsvSource({"ADMITIDO,EN_GESTION", "EN_GESTION,EN_TERRENO", "INGRESADO,RECHAZADO",
+    @CsvSource({"ADMITIDO,EN_GESTION", "INGRESADO,RECHAZADO",
             "ADMITIDO,RECHAZADO", "EN_GESTION,RECHAZADO", "EN_TERRENO,RECHAZADO"})
-    void otrasTransicionesNoRegistranEmail(RequestStatus from, String target) {
+    void otrasTransicionesNoRegistranEventos(RequestStatus from, String target) {
         MunicipalRequest stored = requestWithStatus(from);
         when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
         when(repository.save(stored)).thenReturn(stored);
@@ -116,14 +138,33 @@ class RequestServiceTest {
         verifyNoInteractions(publisher);
     }
 
-    @Test
-    void estadoRepetidoNoRegistraEmail() {
-        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(requestWithStatus(RequestStatus.ADMITIDO)));
+    @ParameterizedTest
+    @CsvSource({"ADMITIDO,ADMITIDO", "EN_TERRENO,EN_TERRENO", "INGRESADO,EN_TERRENO"})
+    void transicionRechazadaNoRegistraEventos(RequestStatus from, String target) {
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(requestWithStatus(from)));
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> requestService.changeStatus("id", "ADMITIDO", null, new CallerContext("func", "Funcionario")));
+                () -> requestService.changeStatus("id", target, null, new CallerContext("func", "Funcionario")));
         assertEquals(409, ex.getStatusCode().value());
         assertTrue(TransactionSynchronizationManager.getSynchronizations().isEmpty());
         verifyNoInteractions(publisher);
+    }
+
+    @Test
+    void excepcionInesperadaDelPrimerPublicadorNoSuprimeElSegundo() {
+        MunicipalRequest stored = requestWithStatus(RequestStatus.EN_GESTION);
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
+        when(repository.save(stored)).thenReturn(stored);
+        doThrow(new IllegalStateException("fallo controlado"))
+                .when(publisher).publish(eq("crew.ticket"), any(), any(), any(UUID.class));
+        requestService.changeStatus("id", "EN_TERRENO", null, new CallerContext("func", "Funcionario"));
+        TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
+        ArgumentCaptor<UUID> trace = ArgumentCaptor.forClass(UUID.class);
+        ArgumentCaptor<Object> snapshot = ArgumentCaptor.forClass(Object.class);
+        verify(publisher).publish(eq("crew.ticket"), eq(stored.getId()), snapshot.capture(), trace.capture());
+        ArgumentCaptor<Object> emailSnapshot = ArgumentCaptor.forClass(Object.class);
+        verify(publisher).publish(eq("email.visit"), eq(stored.getId()), emailSnapshot.capture(), eq(trace.getValue()));
+        assertSame(snapshot.getValue(), emailSnapshot.getValue());
+        verifyNoMoreInteractions(publisher);
     }
 
     @Test

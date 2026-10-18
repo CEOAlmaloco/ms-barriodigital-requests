@@ -147,20 +147,29 @@ EP1.5-18 protege `changeStatus()` con `findByIdForUpdate()` y bloqueo pesimista 
 
 La prueba `RequestStatusConcurrencyTest` usa dos transacciones independientes y H2, siguiendo Catalog. H2 se agrega solo con alcance test y versión del BOM; no valida Oracle desplegado. Ejecutar `.\mvnw.cmd verify`. Esta protección no convierte la coordinación con Catalog en una transacción distribuida ni garantiza recuperación ante respuestas perdidas.
 
-## Emails de estado (EP2-22)
+## Eventos de estado (EP2-22 / EP2-23)
 
 `INGRESADO → ADMITIDO` publica `email.admitted`; `EN_TERRENO → RESUELTO` publica `email.resolved`.
 Ambos usan el exchange topic de `RabbitNamesProperties` (`cmd.topic`) y routing key igual al `type`.
-Las demás transiciones, el alta y las lecturas no publican estos emails. Un estado repetido conserva el 409.
+`EN_GESTION → EN_TERRENO` publica `crew.ticket` en el exchange direct configurado (`cmd.direct`), con
+routing key `crew.ticket`, y `email.visit` en el topic configurado, con routing key `email.visit`.
+Las demás transiciones, el alta y las lecturas no publican eventos. Un estado repetido conserva el 409.
 
 La publicación es asíncrona y posterior al commit, también cuando existe una transacción exterior. Rollback,
 fallo de commit o transición rechazada no producen eventos. El payload incluye `requestId`, `procedureType`,
 `procedureLabel`, `address` y `solicitanteEmail`, usando los snapshots persistidos. Un correo null se publica
-igualmente y Notify lo rechaza hacia la DLQ; una etiqueta null usa el código como respaldo de presentación.
+igualmente y Notify lo rechaza hacia la DLQ de email, sin impedir el procesamiento del ticket de cuadrilla.
+El productor conserva los null; Notify usa el código como respaldo de presentación de una etiqueta null.
+
+Cada cambio captura un único snapshot inmutable y registra un solo callback posterior al commit. El par
+comparte ese snapshot, el `correlationId` del trámite y un `traceId` del cambio; cada mensaje tiene su propio
+`eventId` y su instante de publicación. Los workers no reciben entidades JPA ni consultan repositorios.
 
 Un fallo del broker o rechazo del ejecutor no cambia el resultado HTTP de una transición ya persistida.
 Mensajes persistentes, mandatory y confirms aportan diagnóstico, no acreditan procesamiento ni recuperación.
 Sin outbox ni reintentos del productor, una caída del broker, saturación o caída del proceso puede perder el evento.
+Cada publicación se encola por separado y el fallo de una no suprime el intento de la otra. Se admite entrega
+parcial; no se garantiza atomicidad del par ni orden de llegada o procesamiento.
 
 Para el arranque y la operación, ver el repo `barriodigital-infra` → `apps/README.md`.
 
@@ -176,12 +185,9 @@ java -version
 En Linux/macOS, usar `sh ./mvnw -B verify`. Las pruebas utilizan la configuración versionada de
 `src/test/resources`, H2 de test y transporte Rabbit simulado; no requieren Oracle, wallet, broker, Notify
 ni archivos de una ejecución anterior. Cubren transacciones reales, rollback, fallo de commit, snapshots,
-concurrencia, HTTP y rechazo del ejecutor. La prueba con envío bloqueado no equivale a una prueba de red.
-
-La integración del **18/10/2026** utilizó RabbitMQ y Notify reales, `EMAIL_MODE=logging` y H2 de pruebas.
-Se comprobó consumo de correos, correo nulo en DLQ y 409 sin eventos adicionales. Con el broker detenido,
-ambos PUT respondieron HTTP 200 en menos de dos segundos y se verificó el estado persistido.
-Oracle y el despliegue EC2 no fueron validados. H2 permanece con alcance de test y no forma parte del JAR productivo.
+concurrencia, identidad y destinos del par, fallos parciales, HTTP y rechazo del ejecutor.
+`RequestStatusEventsHttpTest` utiliza HTTP y ejecutor reales con transporte simulado. Las llamadas verificadas
+al publicador no acreditan recepción en un broker; la prueba con envío bloqueado no equivale a una prueba de red.
 
 ## Qué sigue
 

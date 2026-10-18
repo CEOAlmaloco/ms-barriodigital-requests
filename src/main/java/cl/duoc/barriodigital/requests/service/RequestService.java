@@ -25,6 +25,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.List;
+import java.util.UUID;
 
 @Service
 public class RequestService {
@@ -141,36 +142,40 @@ public class RequestService {
         RequestStatus previous = found.getStatus();
         found.applyStatus(target, rejectionReason);
         MunicipalRequest saved = repository.save(found);
-        publishStatusEmailAfterCommit(previous, saved);
+        publishStatusEventsAfterCommit(previous, saved);
         return saved;
     }
 
-    private void publishStatusEmailAfterCommit(RequestStatus previous, MunicipalRequest saved) {
-        String type;
+    private void publishStatusEventsAfterCommit(RequestStatus previous, MunicipalRequest saved) {
+        List<String> types;
         if (previous == RequestStatus.INGRESADO && saved.getStatus() == RequestStatus.ADMITIDO) {
-            type = "email.admitted";
+            types = List.of("email.admitted");
+        } else if (previous == RequestStatus.EN_GESTION && saved.getStatus() == RequestStatus.EN_TERRENO) {
+            types = List.of("crew.ticket", "email.visit");
         } else if (previous == RequestStatus.EN_TERRENO && saved.getStatus() == RequestStatus.RESUELTO) {
-            type = "email.resolved";
+            types = List.of("email.resolved");
         } else {
             return;
         }
 
         if (!TransactionSynchronizationManager.isActualTransactionActive()
                 || !TransactionSynchronizationManager.isSynchronizationActive()) {
-            throw new IllegalStateException("El email de estado requiere una transaccion activa");
+            throw new IllegalStateException("Los eventos de estado requieren una transaccion activa");
         }
         RequestEventPayload payload = new RequestEventPayload(saved.getId(), saved.getProcedureType(),
                 saved.getProcedureLabel(), saved.getAddress(), saved.getSolicitanteEmail());
+        UUID traceId = UUID.randomUUID();
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                try {
-                    publisher.publish(type, payload.requestId(), payload);
-                } catch (RuntimeException ex) {
-                    // afterCommit puede propagar al HTTP aunque la fila ya esté confirmada.
-                    // El publicador ya protege broker/ejecutor; esta frontera protege la entrega misma.
-                    log.error("Fallo de entrega posterior al commit type={} correlationId={} error={}",
-                            type, payload.requestId(), ex.getClass().getSimpleName());
+                for (String type : types) {
+                    try {
+                        publisher.publish(type, payload.requestId(), payload, traceId);
+                    } catch (RuntimeException ex) {
+                        // Protege el resultado HTTP y permite intentar el siguiente evento del cambio.
+                        log.error("Fallo de entrega posterior al commit type={} correlationId={} error={}",
+                                type, payload.requestId(), ex.getClass().getSimpleName());
+                    }
                 }
             }
         });
