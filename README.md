@@ -23,6 +23,9 @@ notepad .env
 | `ORACLE_USER` | Usuario de la aplicación (por ejemplo `barriodigital`); no hace falta usar ADMIN |
 | `ORACLE_PASSWORD` | Contraseña de ese usuario |
 | `ORACLE_WALLET_DIR` | Carpeta del wallet descomprimido **fuera** del repositorio |
+| `RABBIT_ADDRESSES` | Broker AMQP. En local, `localhost:5672` |
+| `RABBIT_USER` | Usuario de RabbitMQ |
+| `RABBIT_PASSWORD` | Password de RabbitMQ |
 
 Ejemplo de formato (cambia las rutas y el alias por los tuyos):
 
