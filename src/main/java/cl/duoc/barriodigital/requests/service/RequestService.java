@@ -69,7 +69,9 @@ public class RequestService {
                 snapshotEmail(caller.userEmail()),
                 procedureLabel
         );
-        return repository.save(request);
+        MunicipalRequest saved = repository.save(request);
+        publishAfterCommit(saved, List.of("certificate.receipt"));
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -153,11 +155,15 @@ public class RequestService {
         } else if (previous == RequestStatus.EN_GESTION && saved.getStatus() == RequestStatus.EN_TERRENO) {
             types = List.of("crew.ticket", "email.visit");
         } else if (previous == RequestStatus.EN_TERRENO && saved.getStatus() == RequestStatus.RESUELTO) {
-            types = List.of("email.resolved");
+            types = List.of("email.resolved", "certificate.resolved");
         } else {
             return;
         }
 
+        publishAfterCommit(saved, types);
+    }
+
+    private void publishAfterCommit(MunicipalRequest saved, List<String> types) {
         if (!TransactionSynchronizationManager.isActualTransactionActive()
                 || !TransactionSynchronizationManager.isSynchronizationActive()) {
             throw new IllegalStateException("Los eventos de estado requieren una transaccion activa");

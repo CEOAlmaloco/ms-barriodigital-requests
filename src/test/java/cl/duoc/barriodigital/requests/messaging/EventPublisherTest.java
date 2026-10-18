@@ -15,6 +15,7 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.AmqpConnectException;
@@ -70,7 +71,8 @@ class EventPublisherTest {
                     "certificate.gen", "certificate.*", "email.dead", "crew.dead", "certificate.dead"));
 
     @ParameterizedTest
-    @ValueSource(strings = {"email.admitted", "email.resolved", "email.visit", "crew.ticket"})
+    @ValueSource(strings = {"email.admitted", "email.resolved", "email.visit", "crew.ticket",
+            "certificate.receipt", "certificate.resolved"})
     void elJsonTraeElSobreYElMensajeEsPersistente(String type) throws Exception {
         RabbitTemplate template = mock(RabbitTemplate.class);
         EventPublisher publisher = new EventPublisher(template, names, mapper, Runnable::run);
@@ -125,8 +127,9 @@ class EventPublisherTest {
         assertEquals(second.eventId().toString(), correlations.getAllValues().get(1).getId());
     }
 
-    @Test
-    void elParComparteTrazaYSnapshotConDestinosConfiguradosEIdentidadPropia() {
+    @ParameterizedTest
+    @CsvSource({"crew.ticket,email.visit,visita.direct", "email.resolved,certificate.resolved,visita.topic"})
+    void elParComparteTrazaYSnapshotConDestinosConfiguradosEIdentidadPropia(String firstType, String secondType, String firstExchange) {
         RabbitTemplate template = mock(RabbitTemplate.class);
         var configuredNames = new RabbitNamesProperties(
                 new Exchange("visita.topic", "visita.direct", "visita.dead"), names.queue(), names.routing());
@@ -134,17 +137,17 @@ class EventPublisherTest {
         EventPublisher publisher = new EventPublisher(template, configuredNames, mapper, tasks::add);
         UUID trace = UUID.randomUUID();
         var payload = new RequestEventPayload("tramite", "tipo_nuevo", "Etiqueta guardada", "Direccion guardada", null);
-        publisher.publish("crew.ticket", "tramite", payload, trace);
-        publisher.publish("email.visit", "tramite", payload, trace);
+        publisher.publish(firstType, "tramite", payload, trace);
+        publisher.publish(secondType, "tramite", payload, trace);
         assertEquals(2, tasks.size());
         verify(template, times(0)).convertAndSend(anyString(), anyString(), any(),
                 any(MessagePostProcessor.class), any(CorrelationData.class));
         tasks.forEach(Runnable::run);
         ArgumentCaptor<Object> crew = ArgumentCaptor.forClass(Object.class);
         ArgumentCaptor<Object> email = ArgumentCaptor.forClass(Object.class);
-        verify(template).convertAndSend(eq("visita.direct"), eq("crew.ticket"), crew.capture(),
+        verify(template).convertAndSend(eq(firstExchange), eq(firstType), crew.capture(),
                 any(MessagePostProcessor.class), any(CorrelationData.class));
-        verify(template).convertAndSend(eq("visita.topic"), eq("email.visit"), email.capture(),
+        verify(template).convertAndSend(eq("visita.topic"), eq(secondType), email.capture(),
                 any(MessagePostProcessor.class), any(CorrelationData.class));
         EventEnvelope first = (EventEnvelope) crew.getValue();
         EventEnvelope second = (EventEnvelope) email.getValue();
@@ -157,28 +160,30 @@ class EventPublisherTest {
         assertSame(payload, second.payload());
     }
 
-    @Test
-    void falloDelPrimerEnvioNoImpideIntentarElSegundo() {
+    @ParameterizedTest
+    @CsvSource({"crew.ticket,email.visit,cmd.direct", "email.resolved,certificate.resolved,cmd.topic"})
+    void falloDelPrimerEnvioNoImpideIntentarElSegundo(String firstType, String secondType, String firstExchange) {
         RabbitTemplate template = mock(RabbitTemplate.class);
         doThrow(new AmqpConnectException(new ConnectException("fallo controlado")))
-                .when(template).convertAndSend(eq("cmd.direct"), eq("crew.ticket"), any(),
+                .when(template).convertAndSend(eq(firstExchange), eq(firstType), any(),
                         any(MessagePostProcessor.class), any(CorrelationData.class));
         List<Runnable> tasks = new ArrayList<>();
         EventPublisher publisher = new EventPublisher(template, names, mapper, tasks::add);
         UUID trace = UUID.randomUUID();
-        publisher.publish("crew.ticket", "tramite", Map.of(), trace);
-        publisher.publish("email.visit", "tramite", Map.of(), trace);
+        publisher.publish(firstType, "tramite", Map.of(), trace);
+        publisher.publish(secondType, "tramite", Map.of(), trace);
         assertEquals(2, tasks.size());
         tasks.forEach(Runnable::run);
-        verify(template).convertAndSend(eq("cmd.direct"), eq("crew.ticket"), any(),
+        verify(template).convertAndSend(eq(firstExchange), eq(firstType), any(),
                 any(MessagePostProcessor.class), any(CorrelationData.class));
-        verify(template).convertAndSend(eq("cmd.topic"), eq("email.visit"), any(),
+        verify(template).convertAndSend(eq("cmd.topic"), eq(secondType), any(),
                 any(MessagePostProcessor.class), any(CorrelationData.class));
     }
 
     @ParameterizedTest
-    @ValueSource(booleans = {false, true})
-    void rechazoDeLaPrimeraTareaNoSuprimeElSegundoIntentoDeEncolado(boolean rejectBoth) {
+    @CsvSource({"crew.ticket,email.visit,false", "crew.ticket,email.visit,true",
+            "email.resolved,certificate.resolved,false", "email.resolved,certificate.resolved,true"})
+    void rechazoDeLaPrimeraTareaNoSuprimeElSegundoIntentoDeEncolado(String firstType, String secondType, boolean rejectBoth) {
         RabbitTemplate template = mock(RabbitTemplate.class);
         AtomicInteger submissions = new AtomicInteger();
         List<Runnable> tasks = new ArrayList<>();
@@ -189,14 +194,14 @@ class EventPublisherTest {
         ListAppender<ILoggingEvent> logs = attachLogs();
         try {
             UUID trace = UUID.randomUUID();
-            publisher.publish("crew.ticket", "tramite", Map.of(), trace);
-            publisher.publish("email.visit", "tramite", Map.of(), trace);
+            publisher.publish(firstType, "tramite", Map.of(), trace);
+            publisher.publish(secondType, "tramite", Map.of(), trace);
             assertEquals(2, submissions.get());
             assertEquals(rejectBoth ? 0 : 1, tasks.size());
             assertEquals(rejectBoth ? 2 : 1, logs.list.stream()
                     .filter(event -> event.getFormattedMessage().contains("No se pudo encolar la publicacion")).count());
             tasks.forEach(Runnable::run);
-            verify(template, times(rejectBoth ? 0 : 1)).convertAndSend(eq("cmd.topic"), eq("email.visit"), any(),
+            verify(template, times(rejectBoth ? 0 : 1)).convertAndSend(eq("cmd.topic"), eq(secondType), any(),
                     any(MessagePostProcessor.class), any(CorrelationData.class));
         } finally {
             ((Logger) LoggerFactory.getLogger(EventPublisher.class)).detachAppender(logs);

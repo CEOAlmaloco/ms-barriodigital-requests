@@ -6,6 +6,7 @@ import cl.duoc.barriodigital.requests.messaging.EventPublisher;
 import cl.duoc.barriodigital.requests.messaging.RequestEventPayload;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
+import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -27,6 +28,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -158,19 +160,102 @@ class RequestStatusEventsTransactionTest {
     }
 
     @Test
-    void lecturasYAltaNoPublican() {
+    void altaEsperaCommitExteriorYLaFilaEsVisibleEnOtraTransaccion() throws Exception {
+        var reader = Executors.newSingleThreadExecutor();
+        try {
+            doAnswer(invocation -> {
+                String id = invocation.getArgument(1);
+                MunicipalRequest visible = reader.submit(() -> new TransactionTemplate(transactions).execute(tx ->
+                        repository.findById(id).orElseThrow())).get(5, TimeUnit.SECONDS);
+                assertEquals(RequestStatus.INGRESADO, visible.getStatus());
+                assertEquals(payload(visible), invocation.getArgument(2));
+                return null;
+            }).when(publisher).publish(eq("certificate.receipt"), anyString(), any(), any(UUID.class));
+            MunicipalRequest saved = new TransactionTemplate(transactions).execute(tx -> {
+                MunicipalRequest created = createThroughService();
+                verifyNoInteractions(publisher);
+                return created;
+            });
+            verifyEvents("certificate.receipt", saved);
+        } finally {
+            reader.shutdownNow();
+            assertTrue(reader.awaitTermination(5, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
+    void rollbackDelAltaNoPublicaNiConservaLaFila() {
+        String id = new TransactionTemplate(transactions).execute(tx -> {
+            MunicipalRequest saved = createThroughService();
+            verifyNoInteractions(publisher);
+            tx.setRollbackOnly();
+            return saved.getId();
+        });
+        verifyNoInteractions(publisher);
+        assertTrue(repository.findById(id).isEmpty());
+    }
+
+    @Test
+    void restriccionRealImpideCommitDelInsertSinPublicar() {
+        jdbc.execute("alter table municipal_requests add constraint ep224_insert_failure check (description <> 'alta-invalida-ep224')");
+        AtomicReference<String> id = new AtomicReference<>();
+        try {
+            assertThrows(RuntimeException.class, () -> new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+                MunicipalRequest saved = service.create(new CreateRequestDto("alta-invalida-ep224", "bache", "dir"), funcionario);
+                id.set(saved.getId());
+                verifyNoInteractions(publisher);
+                // El INSERT pendiente falla durante el flush del commit, después de retornar create.
+            }));
+            org.junit.jupiter.api.Assertions.assertNotNull(id.get());
+            verifyNoInteractions(publisher);
+            assertTrue(repository.findById(id.get()).isEmpty());
+        } finally {
+            jdbc.execute("alter table municipal_requests drop constraint ep224_insert_failure");
+        }
+    }
+
+    @Test
+    void snapshotDelAltaNoDependeDeMutacionesPosteriores() {
+        AtomicReference<RequestEventPayload> expected = new AtomicReference<>();
+        new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            MunicipalRequest saved = createThroughService();
+            expected.set(payload(saved));
+            ReflectionTestUtils.setField(saved, "procedureLabel", "Etiqueta posterior");
+            ReflectionTestUtils.setField(saved, "solicitanteEmail", "posterior@example.com");
+            ReflectionTestUtils.setField(saved, "address", "Direccion posterior");
+        });
+        verify(publisher).publish(eq("certificate.receipt"), eq(expected.get().requestId()), eq(expected.get()), any(UUID.class));
+        verifyNoMoreInteractions(publisher);
+    }
+
+    @Test
+    void falloPosteriorAlAltaNoRevierteNiOcultaElResultado() {
+        doThrow(new IllegalStateException("fallo controlado de entrega"))
+                .when(publisher).publish(eq("certificate.receipt"), anyString(), any(), any(UUID.class));
+        MunicipalRequest saved = assertDoesNotThrow(this::createThroughService);
+        assertEquals(RequestStatus.INGRESADO, repository.findById(saved.getId()).orElseThrow().getStatus());
+        verifyEvents("certificate.receipt", saved);
+    }
+
+    private MunicipalRequest createThroughService() {
+        return service.create(new CreateRequestDto("d", "bache", "dir"),
+                new CallerContext("vecino", "Vecino", "Vecino", "vecino@example.com", "Etiqueta%20guardada"));
+    }
+
+    @Test
+    void lecturasNoPublican() {
         MunicipalRequest initial = create(RequestStatus.INGRESADO);
         service.getById(initial.getId(), funcionario);
         service.list(null, null, null, funcionario);
-        service.create(new cl.duoc.barriodigital.requests.web.dto.CreateRequestDto("d", "bache", "dir"), funcionario);
         verifyNoInteractions(publisher);
     }
 
     private void verifyEvents(String type, MunicipalRequest initial) {
         ArgumentCaptor<UUID> trace = ArgumentCaptor.forClass(UUID.class);
         verify(publisher).publish(eq(type), eq(initial.getId()), eq(payload(initial)), trace.capture());
-        if (type.equals("crew.ticket")) {
-            verify(publisher).publish(eq("email.visit"), eq(initial.getId()), eq(payload(initial)), eq(trace.getValue()));
+        if (type.equals("crew.ticket") || type.equals("email.resolved")) {
+            verify(publisher).publish(eq(type.equals("crew.ticket") ? "email.visit" : "certificate.resolved"),
+                    eq(initial.getId()), eq(payload(initial)), eq(trace.getValue()));
         }
         verifyNoMoreInteractions(publisher);
     }

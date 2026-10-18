@@ -12,6 +12,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
@@ -89,15 +90,16 @@ class RequestServiceTest {
         ArgumentCaptor<Object> snapshot = ArgumentCaptor.forClass(Object.class);
         verify(publisher).publish(eq(type), eq(expected.requestId()), snapshot.capture(), trace.capture());
         assertEquals(expected, snapshot.getValue());
-        if (from == RequestStatus.EN_GESTION) {
-            verify(publisher).publish(eq("email.visit"), eq(expected.requestId()),
+        if (from == RequestStatus.EN_GESTION || from == RequestStatus.EN_TERRENO) {
+            verify(publisher).publish(eq(from == RequestStatus.EN_GESTION ? "email.visit" : "certificate.resolved"), eq(expected.requestId()),
                     org.mockito.ArgumentMatchers.same(snapshot.getValue()), eq(trace.getValue()));
         }
         verifyNoMoreInteractions(publisher);
     }
 
     @ParameterizedTest
-    @CsvSource({"INGRESADO,ADMITIDO,email.admitted", "EN_GESTION,EN_TERRENO,crew.ticket"})
+    @CsvSource({"INGRESADO,ADMITIDO,email.admitted", "EN_GESTION,EN_TERRENO,crew.ticket",
+            "EN_TERRENO,RESUELTO,email.resolved"})
     void publicaTambienLosSnapshotsNulos(RequestStatus from, String target, String type) {
         MunicipalRequest stored = requestWithStatus(from);
         when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
@@ -107,8 +109,8 @@ class RequestServiceTest {
         ArgumentCaptor<UUID> trace = ArgumentCaptor.forClass(UUID.class);
         verify(publisher).publish(eq(type), eq(stored.getId()),
                 eq(new RequestEventPayload(stored.getId(), "bache", null, "dir", null)), trace.capture());
-        if (from == RequestStatus.EN_GESTION) {
-            verify(publisher).publish(eq("email.visit"), eq(stored.getId()),
+        if (from == RequestStatus.EN_GESTION || from == RequestStatus.EN_TERRENO) {
+            verify(publisher).publish(eq(from == RequestStatus.EN_GESTION ? "email.visit" : "certificate.resolved"), eq(stored.getId()),
                     eq(new RequestEventPayload(stored.getId(), "bache", null, "dir", null)), eq(trace.getValue()));
         }
         verifyNoMoreInteractions(publisher);
@@ -139,7 +141,8 @@ class RequestServiceTest {
     }
 
     @ParameterizedTest
-    @CsvSource({"ADMITIDO,ADMITIDO", "EN_TERRENO,EN_TERRENO", "INGRESADO,EN_TERRENO"})
+    @CsvSource({"ADMITIDO,ADMITIDO", "EN_TERRENO,EN_TERRENO", "INGRESADO,EN_TERRENO",
+            "RESUELTO,RESUELTO", "ADMITIDO,RESUELTO"})
     void transicionRechazadaNoRegistraEventos(RequestStatus from, String target) {
         when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(requestWithStatus(from)));
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
@@ -149,22 +152,55 @@ class RequestServiceTest {
         verifyNoInteractions(publisher);
     }
 
-    @Test
-    void excepcionInesperadaDelPrimerPublicadorNoSuprimeElSegundo() {
-        MunicipalRequest stored = requestWithStatus(RequestStatus.EN_GESTION);
+    @ParameterizedTest
+    @CsvSource({"EN_GESTION,EN_TERRENO,crew.ticket,email.visit", "EN_TERRENO,RESUELTO,email.resolved,certificate.resolved"})
+    void excepcionInesperadaDelPrimerPublicadorNoSuprimeElSegundo(
+            RequestStatus from, String target, String first, String second) {
+        MunicipalRequest stored = requestWithStatus(from);
         when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
         when(repository.save(stored)).thenReturn(stored);
         doThrow(new IllegalStateException("fallo controlado"))
-                .when(publisher).publish(eq("crew.ticket"), any(), any(), any(UUID.class));
-        requestService.changeStatus("id", "EN_TERRENO", null, new CallerContext("func", "Funcionario"));
+                .when(publisher).publish(eq(first), any(), any(), any(UUID.class));
+        requestService.changeStatus("id", target, null, new CallerContext("func", "Funcionario"));
         TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
         ArgumentCaptor<UUID> trace = ArgumentCaptor.forClass(UUID.class);
         ArgumentCaptor<Object> snapshot = ArgumentCaptor.forClass(Object.class);
-        verify(publisher).publish(eq("crew.ticket"), eq(stored.getId()), snapshot.capture(), trace.capture());
+        verify(publisher).publish(eq(first), eq(stored.getId()), snapshot.capture(), trace.capture());
         ArgumentCaptor<Object> emailSnapshot = ArgumentCaptor.forClass(Object.class);
-        verify(publisher).publish(eq("email.visit"), eq(stored.getId()), emailSnapshot.capture(), eq(trace.getValue()));
+        verify(publisher).publish(eq(second), eq(stored.getId()), emailSnapshot.capture(), eq(trace.getValue()));
         assertSame(snapshot.getValue(), emailSnapshot.getValue());
         verifyNoMoreInteractions(publisher);
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void altaCapturaLaInstanciaDevueltaPorSaveEnUnSoloCallback(boolean nullSnapshots) {
+        MunicipalRequest saved = new MunicipalRequest("guardado", "d", "tipo_guardado", "direccion guardada",
+                "vecino", "Vecino", nullSnapshots ? null : "guardado@example.com",
+                nullSnapshots ? null : "Etiqueta guardada");
+        when(repository.save(any(MunicipalRequest.class))).thenReturn(saved);
+        var expected = new RequestEventPayload(saved.getId(), "tipo_guardado", saved.getProcedureLabel(),
+                "direccion guardada", saved.getSolicitanteEmail());
+        MunicipalRequest returned = requestService.create(new CreateRequestDto("d", "bache", "otra direccion"),
+                new CallerContext("vecino", "Vecino", "Vecino", "otro@example.com", "Otra etiqueta"));
+        assertSame(saved, returned);
+        assertEquals(1, TransactionSynchronizationManager.getSynchronizations().size());
+        verifyNoInteractions(publisher);
+        ReflectionTestUtils.setField(saved, "procedureLabel", "Etiqueta posterior");
+        ReflectionTestUtils.setField(saved, "solicitanteEmail", "posterior@example.com");
+        ReflectionTestUtils.setField(saved, "address", "Direccion posterior");
+        TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
+        verify(publisher).publish(eq("certificate.receipt"), eq(expected.requestId()), eq(expected), any(UUID.class));
+        verifyNoMoreInteractions(publisher);
+    }
+
+    @Test
+    void altaSinTransaccionNoPublicaInmediatamente() {
+        TransactionSynchronizationManager.clear();
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        assertThrows(IllegalStateException.class, () -> requestService.create(
+                new CreateRequestDto("d", "bache", "dir"), new CallerContext("vecino", "Vecino")));
+        verifyNoInteractions(publisher);
     }
 
     @Test

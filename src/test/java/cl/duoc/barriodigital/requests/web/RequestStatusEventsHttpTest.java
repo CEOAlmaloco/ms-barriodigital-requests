@@ -7,6 +7,7 @@ import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.integration.RequestsH2Application;
 import cl.duoc.barriodigital.requests.messaging.EventPublisher;
+import cl.duoc.barriodigital.requests.messaging.EventEnvelope;
 import cl.duoc.barriodigital.requests.messaging.RequestEventPayload;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -99,11 +100,12 @@ class RequestStatusEventsHttpTest {
 
     @ParameterizedTest
     @CsvSource({"INGRESADO,ADMITIDO,email.admitted", "EN_TERRENO,RESUELTO,email.resolved",
-            "EN_GESTION,EN_TERRENO,crew.ticket"})
+            "EN_GESTION,EN_TERRENO,crew.ticket", "INGRESADO,INGRESADO,certificate.receipt"})
     void httpTerminaAntesDeLiberarEnvioYElFalloPosteriorNoRevierte(
             RequestStatus from, RequestStatus target, String type) throws Exception {
-        MunicipalRequest initial = create(from);
-        int messages = target == RequestStatus.EN_TERRENO ? 2 : 1;
+        boolean creation = from == target;
+        MunicipalRequest initial = creation ? null : create(from);
+        int messages = target == RequestStatus.EN_TERRENO || target == RequestStatus.RESUELTO ? 2 : 1;
         CountDownLatch entered = new CountDownLatch(messages);
         CountDownLatch release = new CountDownLatch(1);
         CountDownLatch exited = new CountDownLatch(messages);
@@ -113,7 +115,8 @@ class RequestStatusEventsHttpTest {
         doAnswer(invocation -> {
             workers.add(Thread.currentThread());
             transactionsActive.add(TransactionSynchronizationManager.isActualTransactionActive());
-            visible.set(readStatus(initial.getId()));
+            EventEnvelope envelope = invocation.getArgument(2);
+            visible.set(readStatus(envelope.correlationId()));
             entered.countDown();
             try {
                 if (!release.await(10, TimeUnit.SECONDS)) throw new IllegalStateException("no se libero el envio");
@@ -125,9 +128,9 @@ class RequestStatusEventsHttpTest {
 
         try {
             long start = System.nanoTime();
-            ResponseEntity<String> response = put(initial.getId(), target);
+            ResponseEntity<String> response = creation ? post() : put(initial.getId(), target);
             long millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
-            assertEquals(HttpStatus.OK, response.getStatusCode());
+            assertEquals(creation ? HttpStatus.CREATED : HttpStatus.OK, response.getStatusCode());
             assertTrue(millis < 2_000, "PUT tardo " + millis + " ms");
             assertTrue(entered.await(5, TimeUnit.SECONDS), "el worker no entro al envio");
             assertEquals(1, release.getCount(), "el HTTP debe terminar sin liberar el envio");
@@ -140,7 +143,7 @@ class RequestStatusEventsHttpTest {
             });
             assertTrue(transactionsActive.stream().allMatch(active -> !active));
             assertEquals(target, visible.get());
-            assertEquals(target, readStatus(initial.getId()));
+            assertEquals(target, readStatus(mapper.readTree(response.getBody()).get("id").asText()));
         } finally {
             release.countDown();
             assertTrue(exited.await(5, TimeUnit.SECONDS));
@@ -150,13 +153,17 @@ class RequestStatusEventsHttpTest {
         if (target == RequestStatus.EN_TERRENO) {
             assertTrue(logs.stream().anyMatch(line -> line.contains("No se pudo publicar type=email.visit")));
         }
-        assertEquals(target, readStatus(initial.getId()));
+        if (target == RequestStatus.RESUELTO) {
+            assertTrue(logs.stream().anyMatch(line -> line.contains("No se pudo publicar type=certificate.resolved")));
+        }
+        if (!creation) assertEquals(target, readStatus(initial.getId()));
     }
 
     @ParameterizedTest
-    @CsvSource({"INGRESADO,ADMITIDO", "EN_TERRENO,RESUELTO", "EN_GESTION,EN_TERRENO"})
-    void ejecutorSaturadoNoEnviaEnHttpYConserva200(RequestStatus from, RequestStatus target) throws Exception {
-        MunicipalRequest initial = create(from);
+    @CsvSource({"INGRESADO,ADMITIDO", "EN_TERRENO,RESUELTO", "EN_GESTION,EN_TERRENO", "INGRESADO,INGRESADO"})
+    void ejecutorSaturadoNoEnviaEnHttpYConservaRespuestaExitosa(RequestStatus from, RequestStatus target) throws Exception {
+        boolean creation = from == target;
+        MunicipalRequest initial = creation ? null : create(from);
         CountDownLatch release = new CountDownLatch(1);
         CountDownLatch workers = new CountDownLatch(4);
         ThreadPoolTaskExecutor pool = (ThreadPoolTaskExecutor) executor;
@@ -176,12 +183,13 @@ class RequestStatusEventsHttpTest {
             for (int i = existingWorkers; i < 4; i++) executor.execute(block);
             assertTrue(workers.await(5, TimeUnit.SECONDS));
             long start = System.nanoTime();
-            assertEquals(HttpStatus.OK, put(initial.getId(), target).getStatusCode());
+            ResponseEntity<String> response = creation ? post() : put(initial.getId(), target);
+            assertEquals(creation ? HttpStatus.CREATED : HttpStatus.OK, response.getStatusCode());
             long millis = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - start);
             assertTrue(millis < 2_000, "PUT tardo " + millis + " ms");
-            assertEquals(target, readStatus(initial.getId()));
+            assertEquals(target, readStatus(mapper.readTree(response.getBody()).get("id").asText()));
             verify(template, never()).convertAndSend(anyString(), anyString(), any(), any(MessagePostProcessor.class), any(CorrelationData.class));
-            assertEquals(target == RequestStatus.EN_TERRENO ? 2 : 1, logs.stream()
+            assertEquals(target == RequestStatus.EN_TERRENO || target == RequestStatus.RESUELTO ? 2 : 1, logs.stream()
                     .filter(line -> line.contains("No se pudo encolar la publicacion")).count());
         } finally {
             release.countDown();
@@ -206,6 +214,15 @@ class RequestStatusEventsHttpTest {
         MunicipalRequest request = new MunicipalRequest("t", "d", "bache", "dir", "vecino");
         request.setStatus(status);
         return repository.saveAndFlush(request);
+    }
+
+    private ResponseEntity<String> post() {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        headers.set("X-User-Id", "vecino");
+        headers.set("X-User-Roles", "Vecino");
+        return http.postForEntity("/api/requests", new HttpEntity<>(
+                Map.of("description", "d", "procedureType", "bache", "address", "dir"), headers), String.class);
     }
 
     private ResponseEntity<String> put(String id, RequestStatus target) {
