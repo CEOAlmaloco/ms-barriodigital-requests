@@ -13,6 +13,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.AmqpConnectException;
@@ -30,6 +32,7 @@ import org.springframework.amqp.support.converter.Jackson2JsonMessageConverter;
 import java.net.ConnectException;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -38,12 +41,14 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.times;
 
 class EventPublisherTest {
 
@@ -58,19 +63,21 @@ class EventPublisherTest {
             new Routing("email.send", "email.*", "crew.ticket", "crew.#",
                     "certificate.gen", "certificate.*", "email.dead", "crew.dead", "certificate.dead"));
 
-    @Test
-    void elJsonTraeElSobreYElMensajeEsPersistente() throws Exception {
+    @ParameterizedTest
+    @ValueSource(strings = {"email.admitted", "email.resolved"})
+    void elJsonTraeElSobreYElMensajeEsPersistente(String type) throws Exception {
         RabbitTemplate template = mock(RabbitTemplate.class);
         EventPublisher publisher = new EventPublisher(template, names, mapper, Runnable::run);
 
-        publisher.publish("email.admitted", "7b6e1d44-2a18-4c90-9f01-88aa11bb22cc",
-                Map.of("requestId", "7b6e1d44-2a18-4c90-9f01-88aa11bb22cc", "address", "Los Aromos 120"));
+        publisher.publish(type, "7b6e1d44-2a18-4c90-9f01-88aa11bb22cc",
+                new RequestEventPayload("7b6e1d44-2a18-4c90-9f01-88aa11bb22cc", "bache", null,
+                        "Los Aromos 120", null));
 
         ArgumentCaptor<Object> body = ArgumentCaptor.forClass(Object.class);
         ArgumentCaptor<MessagePostProcessor> processor = ArgumentCaptor.forClass(MessagePostProcessor.class);
         verify(template).convertAndSend(
                 org.mockito.ArgumentMatchers.eq("cmd.topic"),
-                org.mockito.ArgumentMatchers.eq("email.admitted"),
+                org.mockito.ArgumentMatchers.eq(type),
                 body.capture(),
                 processor.capture(),
                 any(CorrelationData.class));
@@ -80,13 +87,35 @@ class EventPublisherTest {
         message = processor.getValue().postProcessMessage(message);
         JsonNode json = mapper.readTree(message.getBody());
 
-        assertEquals("email.admitted", json.get("type").asText());
+        assertEquals(type, json.get("type").asText());
         assertTrue(json.get("eventId").asText().length() > 10);
         assertTrue(json.get("timestamp").asText().endsWith("Z"));
         assertTrue(json.get("traceId").asText().length() > 10);
         assertEquals("7b6e1d44-2a18-4c90-9f01-88aa11bb22cc", json.get("correlationId").asText());
         assertEquals("Los Aromos 120", json.get("payload").get("address").asText());
+        assertEquals(5, json.get("payload").size());
+        assertTrue(json.get("payload").get("procedureLabel").isNull());
+        assertTrue(json.get("payload").get("solicitanteEmail").isNull());
+        UUID.fromString(json.get("eventId").asText());
+        UUID.fromString(json.get("traceId").asText());
         assertEquals(MessageDeliveryMode.PERSISTENT, message.getMessageProperties().getDeliveryMode());
+    }
+
+    @Test
+    void cadaEventoTieneIdentidadPropia() {
+        RabbitTemplate template = mock(RabbitTemplate.class);
+        EventPublisher publisher = new EventPublisher(template, names, mapper, Runnable::run);
+        publisher.publish("email.admitted", "tramite", Map.of());
+        publisher.publish("email.resolved", "tramite", Map.of());
+        ArgumentCaptor<Object> bodies = ArgumentCaptor.forClass(Object.class);
+        ArgumentCaptor<CorrelationData> correlations = ArgumentCaptor.forClass(CorrelationData.class);
+        verify(template, times(2)).convertAndSend(anyString(), anyString(), bodies.capture(),
+                any(MessagePostProcessor.class), correlations.capture());
+        EventEnvelope first = (EventEnvelope) bodies.getAllValues().get(0);
+        EventEnvelope second = (EventEnvelope) bodies.getAllValues().get(1);
+        assertNotEquals(first.eventId(), second.eventId());
+        assertEquals(first.eventId().toString(), correlations.getAllValues().get(0).getId());
+        assertEquals(second.eventId().toString(), correlations.getAllValues().get(1).getId());
     }
 
     @Test

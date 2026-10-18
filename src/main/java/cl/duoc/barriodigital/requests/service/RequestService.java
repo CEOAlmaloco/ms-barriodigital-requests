@@ -4,12 +4,18 @@ import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.ProcedureTypes;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.domain.RequestTransitions;
+import cl.duoc.barriodigital.requests.messaging.EventPublisher;
+import cl.duoc.barriodigital.requests.messaging.RequestEventPayload;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import org.springframework.http.HttpStatus;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.net.URLDecoder;
@@ -23,13 +29,17 @@ import java.util.List;
 @Service
 public class RequestService {
 
+    private static final Logger log = LoggerFactory.getLogger(RequestService.class);
+
     /** Mismo largo que la columna procedure_label y que label en catalog. */
     static final int PROCEDURE_LABEL_MAX = 120;
 
     private final MunicipalRequestRepository repository;
+    private final EventPublisher publisher;
 
-    public RequestService(MunicipalRequestRepository repository) {
+    public RequestService(MunicipalRequestRepository repository, EventPublisher publisher) {
         this.repository = repository;
+        this.publisher = publisher;
     }
 
     @Transactional
@@ -128,8 +138,42 @@ public class RequestService {
             );
         }
 
+        RequestStatus previous = found.getStatus();
         found.applyStatus(target, rejectionReason);
-        return repository.save(found);
+        MunicipalRequest saved = repository.save(found);
+        publishStatusEmailAfterCommit(previous, saved);
+        return saved;
+    }
+
+    private void publishStatusEmailAfterCommit(RequestStatus previous, MunicipalRequest saved) {
+        String type;
+        if (previous == RequestStatus.INGRESADO && saved.getStatus() == RequestStatus.ADMITIDO) {
+            type = "email.admitted";
+        } else if (previous == RequestStatus.EN_TERRENO && saved.getStatus() == RequestStatus.RESUELTO) {
+            type = "email.resolved";
+        } else {
+            return;
+        }
+
+        if (!TransactionSynchronizationManager.isActualTransactionActive()
+                || !TransactionSynchronizationManager.isSynchronizationActive()) {
+            throw new IllegalStateException("El email de estado requiere una transaccion activa");
+        }
+        RequestEventPayload payload = new RequestEventPayload(saved.getId(), saved.getProcedureType(),
+                saved.getProcedureLabel(), saved.getAddress(), saved.getSolicitanteEmail());
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                try {
+                    publisher.publish(type, payload.requestId(), payload);
+                } catch (RuntimeException ex) {
+                    // afterCommit puede propagar al HTTP aunque la fila ya esté confirmada.
+                    // El publicador ya protege broker/ejecutor; esta frontera protege la entrega misma.
+                    log.error("Fallo de entrega posterior al commit type={} correlationId={} error={}",
+                            type, payload.requestId(), ex.getClass().getSimpleName());
+                }
+            }
+        });
     }
 
     static RequestStatus parseStatus(String rawStatus) {

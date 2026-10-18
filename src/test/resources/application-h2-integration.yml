@@ -1,0 +1,24 @@
+# Exclusivamente src/test: HTTP y JPA reales, sin Oracle ni wallet.
+spring:
+  config:
+    import: ""
+  datasource:
+    url: jdbc:h2:mem:ep222;DB_CLOSE_DELAY=-1
+    username: sa
+    password: ""
+    driver-class-name: org.h2.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: create-drop
+  rabbitmq:
+    addresses: ${RABBIT_ADDRESSES:127.0.0.1:5679}
+    username: ${RABBIT_USER:ep222}
+    password: ${RABBIT_PASSWORD:solo-pruebas}
+server:
+  port: ${SERVER_PORT:18081}
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

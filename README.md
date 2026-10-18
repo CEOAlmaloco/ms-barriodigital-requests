@@ -8,6 +8,9 @@ Estados del caso: `INGRESADO → ADMITIDO → EN_GESTION → EN_TERRENO → RESU
 
 ## Cómo iniciar (Oracle — EP1-21 / EP1-14)
 
+Requiere JDK 21, `JAVA_HOME` apuntando a ese JDK, acceso a Oracle Autonomous y su wallet. Maven Wrapper
+descarga Maven y las dependencias en la primera ejecución; no hace falta instalar Maven por separado.
+
 1. Copia las variables a un archivo local:
 
 ```powershell
@@ -133,18 +136,10 @@ La imagen **no** lleva wallet ni `.env` adentro: se montan por volumen y variabl
 # Build
 docker build -t bd-requests .
 
-# Run (ajusta la ruta del wallet en tu máquina)
-docker run --rm -p 8081:8081 `
-  -e ORACLE_URL="jdbc:oracle:thin:@barriodig_low?TNS_ADMIN=/wallet" `
-  -e ORACLE_USER=barriodigital `
-  -e ORACLE_PASSWORD=******** `
-  -e ORACLE_WALLET_DIR=/wallet `
-  -v "C:/ruta/a/Wallet_BARRIODIG:/wallet:ro" `
-  bd-requests
 ```
 
 Health: `http://localhost:8081/actuator/health`  
-Orquestación con BFF: repo `barriodigital-infra` → carpeta `apps/`.
+El Compose de infraestructura suministra las variables Rabbit y Oracle y monta el wallet; su plantilla está versionada.
 
 ## Concurrencia de estado (EP1.5-18)
 
@@ -152,7 +147,43 @@ EP1.5-18 protege `changeStatus()` con `findByIdForUpdate()` y bloqueo pesimista 
 
 La prueba `RequestStatusConcurrencyTest` usa dos transacciones independientes y H2, siguiendo Catalog. H2 se agrega solo con alcance test y versión del BOM; no valida Oracle desplegado. Ejecutar `.\mvnw.cmd verify`. Esta protección no convierte la coordinación con Catalog en una transacción distribuida ni garantiza recuperación ante respuestas perdidas.
 
+## Emails de estado (EP2-22)
+
+`INGRESADO → ADMITIDO` publica `email.admitted`; `EN_TERRENO → RESUELTO` publica `email.resolved`.
+Ambos usan el exchange topic de `RabbitNamesProperties` (`cmd.topic`) y routing key igual al `type`.
+Las demás transiciones, el alta y las lecturas no publican estos emails. Un estado repetido conserva el 409.
+
+La publicación es asíncrona y posterior al commit, también cuando existe una transacción exterior. Rollback,
+fallo de commit o transición rechazada no producen eventos. El payload incluye `requestId`, `procedureType`,
+`procedureLabel`, `address` y `solicitanteEmail`, usando los snapshots persistidos. Un correo null se publica
+igualmente y Notify lo rechaza hacia la DLQ; una etiqueta null usa el código como respaldo de presentación.
+
+Un fallo del broker o rechazo del ejecutor no cambia el resultado HTTP de una transición ya persistida.
+Mensajes persistentes, mandatory y confirms aportan diagnóstico, no acreditan procesamiento ni recuperación.
+Sin outbox ni reintentos del productor, una caída del broker, saturación o caída del proceso puede perder el evento.
+
+Para el arranque y la operación, ver el repo `barriodigital-infra` → `apps/README.md`.
+
+### Pruebas y validación
+
+Desde la raíz de este repositorio, con JDK 21 y `JAVA_HOME` configurado, ejecutar Maven Wrapper:
+
+```powershell
+java -version
+.\mvnw.cmd -B verify
+```
+
+En Linux/macOS, usar `sh ./mvnw -B verify`. Las pruebas utilizan la configuración versionada de
+`src/test/resources`, H2 de test y transporte Rabbit simulado; no requieren Oracle, wallet, broker, Notify
+ni archivos de una ejecución anterior. Cubren transacciones reales, rollback, fallo de commit, snapshots,
+concurrencia, HTTP y rechazo del ejecutor. La prueba con envío bloqueado no equivale a una prueba de red.
+
+La integración del **18/10/2026** utilizó RabbitMQ y Notify reales, `EMAIL_MODE=logging` y H2 de pruebas.
+Se comprobó consumo de correos, correo nulo en DLQ y 409 sin eventos adicionales. Con el broker detenido,
+ambos PUT respondieron HTTP 200 en menos de dos segundos y se verificó el estado persistido.
+Oracle y el despliegue EC2 no fueron validados. H2 permanece con alcance de test y no forma parte del JAR productivo.
+
 ## Qué sigue
 
-- Cambio de estado y reglas de EN_TERRENO (EP2)
-- Publicar a Rabbit al admitir un trámite (EP3)
+- Eventos restantes de EP2-01, en sus tareas posteriores.
+- Recuperación durable de publicaciones, fuera del alcance actual sin outbox.
