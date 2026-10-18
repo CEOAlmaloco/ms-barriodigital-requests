@@ -97,8 +97,9 @@ class RequestStatusConcurrencyTest {
             ArgumentCaptor<UUID> trace = ArgumentCaptor.forClass(UUID.class);
             RequestEventPayload payload = new RequestEventPayload(id, "bache", null, "dir", null);
             verify(publisher).publish(eq(type), eq(id), eq(payload), trace.capture());
-            if (target == RequestStatus.EN_TERRENO) {
-                verify(publisher).publish(eq("email.visit"), eq(id), eq(payload), eq(trace.getValue()));
+            if (target == RequestStatus.EN_TERRENO || target == RequestStatus.RESUELTO) {
+                verify(publisher).publish(eq(target == RequestStatus.EN_TERRENO ? "email.visit" : "certificate.resolved"),
+                        eq(id), eq(payload), eq(trace.getValue()));
             }
             verifyNoMoreInteractions(publisher);
         } finally {
