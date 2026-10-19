@@ -1,5 +1,6 @@
 # === Build Maven ===
 target/
+node_modules/
 !.mvn/wrapper/maven-wrapper.jar
 !.mvn/wrapper/maven-wrapper.properties
 

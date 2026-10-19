@@ -1,5 +1,8 @@
 server:
   port: 8081
+  # EP1.5-04: sin esto Spring oculta el message de ResponseStatusException (default never).
+  error:
+    include-message: always
 
 spring:
   application:
@@ -29,6 +32,41 @@ spring:
       hibernate:
         jdbc:
           time_zone: UTC
+  rabbitmq:
+    addresses: ${RABBIT_ADDRESSES:localhost:5672}
+    username: ${RABBIT_USER:barriodigital}
+    password: ${RABBIT_PASSWORD:guest}
+    # Milisegundos. Con el broker caído no se queda 60 s esperando.
+    connection-timeout: 2000
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+
+# Contrato EP2-02. Mismas claves que notify.
+barriodigital:
+  rabbit:
+    exchange:
+      topic: cmd.topic
+      direct: cmd.direct
+      dead: cmd.dead.dlx
+    queue:
+      email: q.cmd.email
+      email-dlq: q.cmd.email.dlq
+      crew: q.cmd.crew
+      crew-dlq: q.cmd.crew.dlq
+      certificate: q.cmd.certificate
+      certificate-dlq: q.cmd.certificate.dlq
+    routing:
+      email-send: email.send
+      email-topic: "email.*"
+      crew-ticket: crew.ticket
+      crew-topic: "crew.#"
+      certificate-gen: certificate.gen
+      certificate-topic: "certificate.*"
+      email-dead: email.dead
+      crew-dead: crew.dead
+      certificate-dead: certificate.dead
 
 management:
   endpoints:

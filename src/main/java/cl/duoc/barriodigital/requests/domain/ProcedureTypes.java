@@ -3,24 +3,26 @@ package cl.duoc.barriodigital.requests.domain;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Códigos canónicos de tipo de trámite (contrato front ↔ back).
  * El front debe enviar el código (value), no el texto visible del combo.
+ * Qué códigos existen lo decide catalog (lo valida el BFF). Acá solo se revisa el formato.
  */
 public final class ProcedureTypes {
 
+    /** Mismo formato que el value de catalog. */
+    private static final Pattern CODE_PATTERN = Pattern.compile("^[a-z0-9_-]{1,40}$");
+
     public static final Map<String, String> LABELS = Map.of(
             "bache", "Bache en calle",
-            "alumbrado", "Alumbrado publico",
+            "alumbrado", "Alumbrado público",
             "basura", "Basura o limpieza",
             "agua", "Agua o alcantarillado",
             "ruido", "Ruido molesto",
             "otro", "Otro"
     );
-
-    public static final Set<String> CODES = LABELS.keySet();
 
     private ProcedureTypes() {
     }
@@ -32,8 +34,8 @@ public final class ProcedureTypes {
         return raw.trim().toLowerCase(Locale.ROOT);
     }
 
-    public static boolean isAllowed(String code) {
-        return code != null && CODES.contains(code);
+    public static boolean hasValidFormat(String code) {
+        return code != null && CODE_PATTERN.matcher(code).matches();
     }
 
     public static String labelOf(String code) {
@@ -42,7 +44,18 @@ public final class ProcedureTypes {
 
     /** Título autogenerado: "{etiqueta} — {direccion}" (máx. 200). */
     public static String buildTitle(String procedureTypeCode, String address) {
-        String base = labelOf(procedureTypeCode) + " — " + address.trim();
+        return buildTitle(procedureTypeCode, address, null);
+    }
+
+    /**
+     * Igual que {@link #buildTitle(String, String)}, pero la etiqueta es el label que mandó catalog.
+     * Si no viene, usa {@link #labelOf(String)}.
+     */
+    public static String buildTitle(String procedureTypeCode, String address, String procedureLabel) {
+        String label = procedureLabel == null || procedureLabel.isBlank()
+                ? labelOf(procedureTypeCode)
+                : procedureLabel.trim();
+        String base = label + " — " + address.trim();
         if (base.length() <= 200) {
             return base;
         }

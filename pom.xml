@@ -38,6 +38,10 @@
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-actuator</artifactId>
     </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-amqp</artifactId>
+    </dependency>
     <!-- Oracle Autonomous (EP1-21). Versión la fija el BOM de Spring Boot. -->
     <dependency>
       <groupId>com.oracle.database.jdbc</groupId>
@@ -63,6 +67,11 @@
     <dependency>
       <groupId>org.springframework.boot</groupId>
       <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.h2database</groupId>
+      <artifactId>h2</artifactId>
       <scope>test</scope>
     </dependency>
   </dependencies>

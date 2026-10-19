@@ -30,6 +30,13 @@ public class MunicipalRequest {
     @Column(name = "procedure_type", nullable = false, length = 100)
     private String procedureType;
 
+    /**
+     * Snapshot del label del tipo al crear, tal como lo tenía catalog. Mismo largo que label en catalog.
+     * Nullable: las filas anteriores quedan en null y Hibernate update agrega la columna.
+     */
+    @Column(name = "procedure_label", length = 120)
+    private String procedureLabel;
+
     @Column(nullable = false, length = 300)
     private String address;
 
@@ -37,9 +44,27 @@ public class MunicipalRequest {
     @Column(name = "solicitante_id", nullable = false, length = 64)
     private String solicitanteId;
 
+    /**
+     * Snapshot del nombre al crear. No se vuelve a leer del JWT en los GET.
+     * Nullable: las filas anteriores a EP1.5-24 no lo tienen.
+     */
+    @Column(name = "solicitante_nombre", length = 200)
+    private String solicitanteNombre;
+
+    /**
+     * Snapshot del email al crear. No se vuelve a leer del JWT en los GET.
+     * Nullable: las filas anteriores a EP2-19 quedan en null y Hibernate update agrega la columna.
+     */
+    @Column(name = "solicitante_email", length = 254)
+    private String solicitanteEmail;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private RequestStatus status;
+
+    /** Solo cuando status es RECHAZADO. Contrato EP1.5-01, máx. 500. */
+    @Column(name = "rejection_reason", length = 500)
+    private String rejectionReason;
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
@@ -58,12 +83,51 @@ public class MunicipalRequest {
             String address,
             String solicitanteId
     ) {
+        this(title, description, procedureType, address, solicitanteId, null);
+    }
+
+    public MunicipalRequest(
+            String title,
+            String description,
+            String procedureType,
+            String address,
+            String solicitanteId,
+            String solicitanteNombre
+    ) {
+        this(title, description, procedureType, address, solicitanteId, solicitanteNombre, null);
+    }
+
+    public MunicipalRequest(
+            String title,
+            String description,
+            String procedureType,
+            String address,
+            String solicitanteId,
+            String solicitanteNombre,
+            String solicitanteEmail
+    ) {
+        this(title, description, procedureType, address, solicitanteId, solicitanteNombre, solicitanteEmail, null);
+    }
+
+    public MunicipalRequest(
+            String title,
+            String description,
+            String procedureType,
+            String address,
+            String solicitanteId,
+            String solicitanteNombre,
+            String solicitanteEmail,
+            String procedureLabel
+    ) {
         this.id = UUID.randomUUID().toString();
         this.title = title;
         this.description = description;
         this.procedureType = procedureType;
+        this.procedureLabel = procedureLabel;
         this.address = address;
         this.solicitanteId = solicitanteId;
+        this.solicitanteNombre = solicitanteNombre;
+        this.solicitanteEmail = solicitanteEmail;
         this.status = RequestStatus.INGRESADO;
         Instant now = Instant.now();
         this.createdAt = now;
@@ -106,12 +170,24 @@ public class MunicipalRequest {
         return procedureType;
     }
 
+    public String getProcedureLabel() {
+        return procedureLabel;
+    }
+
     public String getAddress() {
         return address;
     }
 
     public String getSolicitanteId() {
         return solicitanteId;
+    }
+
+    public String getSolicitanteNombre() {
+        return solicitanteNombre;
+    }
+
+    public String getSolicitanteEmail() {
+        return solicitanteEmail;
     }
 
     public RequestStatus getStatus() {
@@ -126,8 +202,18 @@ public class MunicipalRequest {
         return updatedAt;
     }
 
+    public String getRejectionReason() {
+        return rejectionReason;
+    }
+
     public void setStatus(RequestStatus status) {
         this.status = status;
+        this.updatedAt = Instant.now();
+    }
+
+    public void applyStatus(RequestStatus next, String rejectionReason) {
+        this.status = next;
+        this.rejectionReason = next == RequestStatus.RECHAZADO ? rejectionReason : null;
         this.updatedAt = Instant.now();
     }
 }

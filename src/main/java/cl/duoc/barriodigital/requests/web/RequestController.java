@@ -3,7 +3,9 @@ package cl.duoc.barriodigital.requests.web;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.ProcedureTypes;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
+import cl.duoc.barriodigital.requests.domain.RequestTransitions;
 import cl.duoc.barriodigital.requests.service.RequestService;
+import cl.duoc.barriodigital.requests.web.dto.ChangeStatusDto;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -12,6 +14,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -40,10 +43,31 @@ public class RequestController {
     public ResponseEntity<MunicipalRequest> create(
             @Valid @RequestBody CreateRequestDto body,
             @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
+            @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles,
+            @RequestHeader(value = CallerContext.HEADER_USER_NAME, required = false) String userName,
+            @RequestHeader(value = CallerContext.HEADER_USER_EMAIL, required = false) String userEmail,
+            @RequestHeader(value = CallerContext.HEADER_PROCEDURE_LABEL, required = false) String procedureLabel
+    ) {
+        MunicipalRequest created = requestService.create(
+                body,
+                new CallerContext(userId, roles, userName, userEmail, procedureLabel)
+        );
+        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+    }
+
+    @PutMapping("/{id}/status")
+    public MunicipalRequest updateStatus(
+            @PathVariable String id,
+            @Valid @RequestBody ChangeStatusDto body,
+            @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
             @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles
     ) {
-        MunicipalRequest created = requestService.create(body, new CallerContext(userId, roles));
-        return ResponseEntity.status(HttpStatus.CREATED).body(created);
+        return requestService.changeStatus(
+                id,
+                body.status(),
+                body.rejectionReason(),
+                new CallerContext(userId, roles)
+        );
     }
 
     @GetMapping("/{id}")
@@ -65,10 +89,22 @@ public class RequestController {
     ) {
         return requestService.list(status, from, to, new CallerContext(userId, roles));
     }
-
-    /** Catálogo de códigos para alinear el combo del front. */
+    
+    /**
+     * Catálogo de códigos para alinear el combo del front. Va antes de /{id}.
+     *
+     * @deprecated la fuente de verdad de los tipos de trámite es GET /api/catalog/procedures.
+     * Este endpoint sigue respondiendo la lista fija de siempre.
+     */
+    @Deprecated
     @GetMapping("/meta/procedure-types")
     public Map<String, String> procedureTypes() {
         return ProcedureTypes.asMap();
+    }
+
+    /** Siguientes estados válidos por estado. El front no copia la máquina de estados, la pide acá. */
+    @GetMapping("/meta/transitions")
+    public Map<String, List<String>> transitions() {
+        return RequestTransitions.asNamesMap();
     }
 }
