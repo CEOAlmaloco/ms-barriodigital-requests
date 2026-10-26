@@ -27,22 +27,31 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.UUID;
 
+/**
+ * Crea trámites, los consulta y cambia su estado.
+ * Publica el evento después del commit. Si RabbitMQ está caído se pierde el aviso, no el trámite, y no hay outbox.
+ */
 @Service
 public class RequestService {
 
     private static final Logger log = LoggerFactory.getLogger(RequestService.class);
 
-    /** Mismo largo que la columna procedure_label y que label en catalog. */
+    /** Tope de la columna procedure_label y del label en catalog. */
     static final int PROCEDURE_LABEL_MAX = 120;
 
     private final MunicipalRequestRepository repository;
     private final EventPublisher publisher;
 
+    /** Recibe el repositorio de trámites y el publicador de eventos. */
     public RequestService(MunicipalRequestRepository repository, EventPublisher publisher) {
         this.repository = repository;
         this.publisher = publisher;
     }
 
+    /**
+     * Crea el trámite en INGRESADO.
+     * Después del commit publica el evento certificate.receipt.
+     */
     @Transactional
     public MunicipalRequest create(CreateRequestDto body, CallerContext caller) {
         requireUserId(caller);
@@ -74,6 +83,7 @@ public class RequestService {
         return saved;
     }
 
+    /** Devuelve un trámite. Si es de otra persona y quien pide no es personal, responde que no existe. */
     @Transactional(readOnly = true)
     public MunicipalRequest getById(String id, CallerContext caller) {
         requireUserId(caller);
@@ -86,6 +96,7 @@ public class RequestService {
         return found;
     }
 
+    /** Lista trámites. Quien no es personal solo ve los suyos. */
     @Transactional(readOnly = true)
     public List<MunicipalRequest> list(
             RequestStatus status,
@@ -105,8 +116,8 @@ public class RequestService {
     }
 
     /**
-     * EP1.5-04: parsea status en el service (como procedureType en create).
-     * Expuesto por PUT /api/requests/{id}/status (EP1.5-05).
+     * Cambia el estado. Solo un Funcionario puede hacerlo.
+     * Si el estado es RECHAZADO, el motivo es obligatorio y no supera 500 caracteres. Bloquea la fila para que dos cambios no se pisen.
      */
     @Transactional
     public MunicipalRequest changeStatus(String id, String rawStatus, String rejectionReason, CallerContext caller) {
@@ -148,6 +159,11 @@ public class RequestService {
         return saved;
     }
 
+    /**
+     * Elige los eventos de un cambio de estado y los publica después del commit.
+     * INGRESADO a ADMITIDO publica email.admitted, EN_GESTION a EN_TERRENO publica crew.ticket y email.visit, y EN_TERRENO a RESUELTO publica email.resolved y certificate.resolved.
+     * Pasar a RECHAZADO o a EN_GESTION no publica.
+     */
     private void publishStatusEventsAfterCommit(RequestStatus previous, MunicipalRequest saved) {
         List<String> types;
         if (previous == RequestStatus.INGRESADO && saved.getStatus() == RequestStatus.ADMITIDO) {
@@ -163,6 +179,10 @@ public class RequestService {
         publishAfterCommit(saved, types);
     }
 
+    /**
+     * Publica después del commit, cuando el trámite ya quedó guardado.
+     * Si un evento falla, se registra y se intenta el siguiente. Si RabbitMQ está caído se pierde el aviso, no el trámite, y no hay outbox.
+     */
     private void publishAfterCommit(MunicipalRequest saved, List<String> types) {
         if (!TransactionSynchronizationManager.isActualTransactionActive()
                 || !TransactionSynchronizationManager.isSynchronizationActive()) {
@@ -172,6 +192,7 @@ public class RequestService {
                 saved.getProcedureLabel(), saved.getAddress(), saved.getSolicitanteEmail());
         UUID traceId = UUID.randomUUID();
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            /** Cuando el commit terminó, publica cada evento. Si uno falla, lo registra y sigue con el siguiente. */
             @Override
             public void afterCommit() {
                 for (String type : types) {
@@ -187,6 +208,7 @@ public class RequestService {
         });
     }
 
+    /** Interpreta el estado escrito. Si no es uno de los seis, responde 400. */
     static RequestStatus parseStatus(String rawStatus) {
         if (rawStatus == null || rawStatus.isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status es obligatorio");
@@ -202,7 +224,8 @@ public class RequestService {
     }
 
     /**
-     * Nombre que queda en la fila. El header manda; si viene vacío, el id; si tampoco hay id, "Sin nombre".
+     * Nombre que queda guardado en el trámite.
+     * Si el header viene vacío, usa el id. Si tampoco hay id, queda "Sin nombre".
      */
     static String snapshotName(String headerName, String solicitanteId) {
         String fromHeader = blankToNull(headerName);
@@ -213,14 +236,14 @@ public class RequestService {
         return fromId != null ? fromId : "Sin nombre";
     }
 
-    /** Email que queda en la fila. Sin header, o en blanco, queda null. No se inventa un destinatario. */
+    /** Correo que queda guardado. Si el header viene vacío, queda null. No se inventa uno. */
     static String snapshotEmail(String headerEmail) {
         return blankToNull(headerEmail);
     }
 
     /**
-     * Label del tipo que queda en la fila. El header llega codificado en URL (UTF-8).
-     * Sin header, en blanco o mal codificado queda null, sin error. Se recorta y se trunca a 120.
+     * Etiqueta del tipo que queda guardada. Llega codificada en URL para conservar tildes.
+     * Si falta o está mal codificada, queda null. No supera 120 caracteres.
      */
     static String snapshotProcedureLabel(String headerLabel) {
         String raw = blankToNull(headerLabel);
@@ -239,6 +262,7 @@ public class RequestService {
         return decoded.substring(0, PROCEDURE_LABEL_MAX).trim();
     }
 
+    /** Un texto vacío se trata como ausente. */
     private static String blankToNull(String value) {
         if (value == null || value.isBlank()) {
             return null;
@@ -246,6 +270,7 @@ public class RequestService {
         return value.trim();
     }
 
+    /** Exige el id de quien llama. Sin el header X-User-Id no continúa. */
     private static void requireUserId(CallerContext caller) {
         if (caller == null || caller.userId() == null || caller.userId().isBlank()) {
             throw new ResponseStatusException(

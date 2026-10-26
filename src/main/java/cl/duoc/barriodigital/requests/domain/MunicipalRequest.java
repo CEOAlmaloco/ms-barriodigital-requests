@@ -12,6 +12,10 @@ import jakarta.persistence.Table;
 import java.time.Instant;
 import java.util.UUID;
 
+/**
+ * Trámite municipal persistido en Oracle.
+ * Guarda descripción, tipo, dirección, solicitante y estado. Al crearse queda en INGRESADO.
+ */
 @Entity
 @Table(name = "municipal_requests")
 public class MunicipalRequest {
@@ -20,62 +24,70 @@ public class MunicipalRequest {
     @Column(length = 36, nullable = false)
     private String id;
 
-    /** Autogenerado: procedureType label + direccion. No lo envía el formulario. */
+    /** Título generado con la etiqueta del tipo y la dirección. No lo envía el formulario. */
     @Column(nullable = false, length = 200)
     private String title;
 
+    /** Texto que escribió quien pidió el trámite. */
     @Column(nullable = false, length = 2000)
     private String description;
 
+    /** Código del tipo de trámite, por ejemplo bache. */
     @Column(name = "procedure_type", nullable = false, length = 100)
     private String procedureType;
 
     /**
-     * Snapshot del label del tipo al crear, tal como lo tenía catalog. Mismo largo que label en catalog.
-     * Nullable: las filas anteriores quedan en null y Hibernate update agrega la columna.
+     * Etiqueta del tipo al crear el trámite, tal como estaba en catalog. Mismo largo que label en catalog.
+     * Puede ser null en filas anteriores; Hibernate update agrega la columna.
      */
     @Column(name = "procedure_label", length = 120)
     private String procedureLabel;
 
+    /** Dirección del problema. */
     @Column(nullable = false, length = 300)
     private String address;
 
-    /** oid/sub del JWT (Entra). Lo setea el BFF por header, no el body. */
+    /** Identificador del solicitante (oid o sub de Entra). Lo envía el BFF por header, no el body. */
     @Column(name = "solicitante_id", nullable = false, length = 64)
     private String solicitanteId;
 
     /**
-     * Snapshot del nombre al crear. No se vuelve a leer del JWT en los GET.
-     * Nullable: las filas anteriores a EP1.5-24 no lo tienen.
+     * Nombre del solicitante al crear el trámite. Los GET no vuelven a leer el JWT.
+     * Puede ser null en filas anteriores a ese dato.
      */
     @Column(name = "solicitante_nombre", length = 200)
     private String solicitanteNombre;
 
     /**
-     * Snapshot del email al crear. No se vuelve a leer del JWT en los GET.
-     * Nullable: las filas anteriores a EP2-19 quedan en null y Hibernate update agrega la columna.
+     * Correo del solicitante al crear el trámite. Los GET no vuelven a leer el JWT.
+     * Puede ser null en filas anteriores; Hibernate update agrega la columna.
      */
     @Column(name = "solicitante_email", length = 254)
     private String solicitanteEmail;
 
+    /** Estado actual del trámite. */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 30)
     private RequestStatus status;
 
-    /** Solo cuando status es RECHAZADO. Contrato EP1.5-01, máx. 500. */
+    /** Motivo del rechazo. Solo se guarda cuando el estado es RECHAZADO, con un máximo de 500 caracteres. */
     @Column(name = "rejection_reason", length = 500)
     private String rejectionReason;
 
+    /** Momento en que se creó el trámite. */
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
+    /** Momento de la última modificación. */
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
+    /** Lo usa JPA para crear el objeto vacío. */
     protected MunicipalRequest() {
         // JPA
     }
 
+    /** Crea un trámite sin nombre, correo ni etiqueta del tipo. */
     public MunicipalRequest(
             String title,
             String description,
@@ -86,6 +98,7 @@ public class MunicipalRequest {
         this(title, description, procedureType, address, solicitanteId, null);
     }
 
+    /** Crea un trámite con el nombre del solicitante y sin correo ni etiqueta del tipo. */
     public MunicipalRequest(
             String title,
             String description,
@@ -97,6 +110,7 @@ public class MunicipalRequest {
         this(title, description, procedureType, address, solicitanteId, solicitanteNombre, null);
     }
 
+    /** Crea un trámite con nombre y correo, sin la etiqueta del tipo. */
     public MunicipalRequest(
             String title,
             String description,
@@ -109,6 +123,7 @@ public class MunicipalRequest {
         this(title, description, procedureType, address, solicitanteId, solicitanteNombre, solicitanteEmail, null);
     }
 
+    /** Crea el trámite completo y lo deja en INGRESADO, con la fecha de ahora. */
     public MunicipalRequest(
             String title,
             String description,
@@ -134,6 +149,7 @@ public class MunicipalRequest {
         this.updatedAt = now;
     }
 
+    /** Antes de guardar por primera vez, completa el id, las fechas y el estado si faltan. */
     @PrePersist
     void onCreate() {
         if (id == null) {
@@ -149,68 +165,84 @@ public class MunicipalRequest {
         }
     }
 
+    /** En cada actualización, marca la hora de ahora. */
     @PreUpdate
     void onUpdate() {
         updatedAt = Instant.now();
     }
 
+    /** Identificador del trámite. */
     public String getId() {
         return id;
     }
 
+    /** Título armado con el tipo y la dirección. */
     public String getTitle() {
         return title;
     }
 
+    /** Texto que escribió quien pidió el trámite. */
     public String getDescription() {
         return description;
     }
 
+    /** Código del tipo de trámite. */
     public String getProcedureType() {
         return procedureType;
     }
 
+    /** Etiqueta del tipo tal como estaba en catalog al crearlo. */
     public String getProcedureLabel() {
         return procedureLabel;
     }
 
+    /** Dirección del problema. */
     public String getAddress() {
         return address;
     }
 
+    /** Id de quien pidió el trámite. */
     public String getSolicitanteId() {
         return solicitanteId;
     }
 
+    /** Nombre de quien pidió el trámite, guardado al crearlo. */
     public String getSolicitanteNombre() {
         return solicitanteNombre;
     }
 
+    /** Correo de quien pidió el trámite, guardado al crearlo. */
     public String getSolicitanteEmail() {
         return solicitanteEmail;
     }
 
+    /** Estado actual. */
     public RequestStatus getStatus() {
         return status;
     }
 
+    /** Momento en que se creó. */
     public Instant getCreatedAt() {
         return createdAt;
     }
 
+    /** Momento de la última modificación. */
     public Instant getUpdatedAt() {
         return updatedAt;
     }
 
+    /** Motivo, solo si el estado es RECHAZADO. */
     public String getRejectionReason() {
         return rejectionReason;
     }
 
+    /** Cambia el estado y marca la hora. No toca el motivo de rechazo. */
     public void setStatus(RequestStatus status) {
         this.status = status;
         this.updatedAt = Instant.now();
     }
 
+    /** Cambia el estado. El motivo se guarda solo si el nuevo estado es RECHAZADO; si no, queda null. */
     public void applyStatus(RequestStatus next, String rejectionReason) {
         this.status = next;
         this.rejectionReason = next == RequestStatus.RECHAZADO ? rejectionReason : null;

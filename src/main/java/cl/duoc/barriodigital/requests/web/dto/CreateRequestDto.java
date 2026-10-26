@@ -4,7 +4,8 @@ import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
 /**
- * Body del alta. Sin title (se autogenera) ni solicitanteId (viene del JWT vía BFF).
+ * Body para crear un trámite.
+ * Pide descripción, tipo y dirección. El título lo arma el servicio y el solicitante llega por headers del BFF.
  */
 public record CreateRequestDto(
         @NotBlank @Size(max = 2000) String description,

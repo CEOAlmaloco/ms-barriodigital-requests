@@ -7,8 +7,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
 
 /**
- * Nombres de la topología (contrato EP2-02). Las mismas claves que notify.
- * Si falta una clave, la app no arranca.
+ * Nombres de exchanges, colas y routing keys. Usa las mismas claves que notify.
+ * Si falta una, el servicio no arranca.
  */
 @Validated
 @ConfigurationProperties(prefix = "barriodigital.rabbit")

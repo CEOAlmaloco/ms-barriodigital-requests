@@ -19,8 +19,8 @@ import java.util.UUID;
 import java.util.concurrent.Executor;
 
 /**
- * Los servicios de negocio llaman a {@link #publish}. No nombran exchanges ni routing keys.
- * La publicación corre en otro hilo: si el broker no responde, quien llamó no espera ni recibe la excepción.
+ * Publica eventos en RabbitMQ.
+ * Quien llama indica el tipo; este componente elige exchange y routing key. La publicación corre en otro hilo: si RabbitMQ está caído se pierde el aviso, no el trámite, y no hay outbox.
  */
 @Component
 public class EventPublisher {
@@ -32,6 +32,10 @@ public class EventPublisher {
     private final ObjectMapper mapper;
     private final Executor executor;
 
+    /**
+     * Deja listo el envío.
+     * mandatory obliga a avisar si ninguna cola recibe el mensaje. Los callbacks anotan si el broker lo devuelve o no lo confirma.
+     */
     public EventPublisher(
             RabbitTemplate template,
             RabbitNamesProperties names,
@@ -46,10 +50,15 @@ public class EventPublisher {
         this.template.setConfirmCallback(this::onConfirm);
     }
 
+    /** Publica con un traceId nuevo. Quien llama no espera a RabbitMQ. */
     public void publish(String type, String correlationId, Object payload) {
         publish(type, correlationId, payload, UUID.randomUUID());
     }
 
+    /**
+     * Encola el envío en otro hilo.
+     * Si ese hilo no acepta el trabajo, lo registra y la respuesta HTTP sigue. El mismo traceId agrupa los eventos de un cambio de estado.
+     */
     public void publish(String type, String correlationId, Object payload, UUID traceId) {
         try {
             executor.execute(() -> sendQuietly(type, correlationId, payload, traceId));
@@ -58,6 +67,10 @@ public class EventPublisher {
         }
     }
 
+    /**
+     * Arma el evento, elige exchange y routing key, y lo manda persistente.
+     * Si falla, solo lo registra: no devuelve la excepción a quien cambió el trámite.
+     */
     private void sendQuietly(String type, String correlationId, Object payload, UUID traceId) {
         try {
             EventEnvelope envelope = new EventEnvelope(
@@ -78,6 +91,10 @@ public class EventPublisher {
         }
     }
 
+    /**
+     * crew.ticket va al exchange cmd.direct con esa routing key.
+     * El resto va al exchange cmd.topic y la routing key es el propio type.
+     */
     private Destination destination(String type) {
         if (type != null && type.equals(names.routing().crewTicket())) {
             return new Destination(names.exchange().direct(), names.routing().crewTicket());
@@ -85,6 +102,7 @@ public class EventPublisher {
         return new Destination(names.exchange().topic(), type);
     }
 
+    /** El broker devolvió el mensaje porque ninguna cola tenía binding para esa routing key. */
     void onReturned(ReturnedMessage returned) {
         log.error(
                 "mensaje devuelto exchange={} routingKey={} eventId={} reply={}",
@@ -94,6 +112,7 @@ public class EventPublisher {
                 returned.getReplyText());
     }
 
+    /** Si el broker no confirmó que guardó el mensaje, lo registra. Un ack verdadero no escribe nada. */
     void onConfirm(CorrelationData correlation, boolean ack, String cause) {
         if (ack) {
             return;
@@ -102,6 +121,7 @@ public class EventPublisher {
         log.error("el broker no confirmo el mensaje eventId={} causa={}", eventId, cause);
     }
 
+    /** Lee el eventId del JSON devuelto. Si no puede, escribe "desconocido". */
     private String eventId(Message message) {
         if (message == null || message.getBody() == null) {
             return "desconocido";

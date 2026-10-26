@@ -3,9 +3,8 @@ package cl.duoc.barriodigital.requests.web.dto;
 import jakarta.validation.constraints.Size;
 
 /**
- * Body de PUT /api/requests/{id}/status (EP1.5-01 / EP1.5-05).
- * status se parsea en el service (400 si no es del enum).
- * rejectionReason es opcional acá obligatorio solo si status es RECHAZADO.
+ * Body para cambiar el estado de un trámite.
+ * El estado se interpreta en el servicio. El motivo es obligatorio solo si el estado es RECHAZADO y no supera 500 caracteres.
  */
 public record ChangeStatusDto(
         String status,

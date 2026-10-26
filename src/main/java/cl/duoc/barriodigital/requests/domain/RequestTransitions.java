@@ -8,9 +8,8 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Máquina de estados EP1.5-01.
- * Define las 8 transiciones permitidas por contrato.
- * El front no copia estas flechas: las pide a GET /api/requests/meta/transitions.
+ * Cambios de estado permitidos de un trámite.
+ * INGRESADO va a ADMITIDO o RECHAZADO, ADMITIDO a EN_GESTION o RECHAZADO, EN_GESTION a EN_TERRENO o RECHAZADO y EN_TERRENO a RESUELTO o RECHAZADO. RESUELTO y RECHAZADO no continúan.
  */
 public final class RequestTransitions {
 
@@ -25,9 +24,11 @@ public final class RequestTransitions {
         ALLOWED.put(RequestStatus.RECHAZADO, EnumSet.noneOf(RequestStatus.class));
     }
 
+    /** No se instancia: solo expone las transiciones. */
     private RequestTransitions() {
     }
 
+    /** Indica si se puede pasar de un estado al otro. */
     public static boolean isAllowed(RequestStatus from, RequestStatus to) {
         if (from == null || to == null) {
             return false;
@@ -35,17 +36,19 @@ public final class RequestTransitions {
         return ALLOWED.getOrDefault(from, Set.of()).contains(to);
     }
 
+    /** Devuelve los estados a los que se puede pasar desde este. */
     public static Set<RequestStatus> next(RequestStatus from) {
         return Set.copyOf(ALLOWED.getOrDefault(from, Set.of()));
     }
 
+    /** Copia el mapa de transiciones permitidas. */
     public static Map<RequestStatus, Set<RequestStatus>> asMap() {
         Map<RequestStatus, Set<RequestStatus>> copy = new EnumMap<>(RequestStatus.class);
         ALLOWED.forEach((from, to) -> copy.put(from, Set.copyOf(to)));
         return copy;
     }
 
-    /** Para el endpoint meta: un estado por clave, en el orden del enum, los finales con lista vacía. */
+    /** Devuelve las transiciones con el nombre de cada estado. Los finales quedan con lista vacía. */
     public static Map<String, List<String>> asNamesMap() {
         Map<String, List<String>> transitions = new LinkedHashMap<>();
         for (RequestStatus status : RequestStatus.values()) {

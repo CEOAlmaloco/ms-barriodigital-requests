@@ -12,12 +12,18 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Acceso a los trámites en Oracle.
+ * Puede bloquear una fila para cambiar el estado sin que dos escrituras se pisen, y buscar por estado, fechas y solicitante.
+ */
 public interface MunicipalRequestRepository extends JpaRepository<MunicipalRequest, String> {
 
+    /** Busca el trámite y lo bloquea en escritura hasta que termine la transacción. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select r from MunicipalRequest r where r.id = :id")
     Optional<MunicipalRequest> findByIdForUpdate(@Param("id") String id);
 
+    /** Lista trámites. Un filtro null no se aplica. Los más recientes van primero. */
     @Query("""
             SELECT r FROM MunicipalRequest r
             WHERE (:status IS NULL OR r.status = :status)

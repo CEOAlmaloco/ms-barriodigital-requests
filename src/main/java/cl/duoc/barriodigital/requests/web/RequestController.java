@@ -26,8 +26,8 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * CRUD Oracle. Identidad y roles llegan del BFF (headers), no del body.
- * from/to aceptan fecha simple {@code yyyy-MM-dd} (mat-datepicker).
+ * API HTTP de los trámites.
+ * La identidad llega en headers del BFF, no en el body.
  */
 @RestController
 @RequestMapping("/api/requests")
@@ -35,10 +35,12 @@ public class RequestController {
 
     private final RequestService requestService;
 
+    /** Recibe el servicio que aplica las reglas del trámite. */
     public RequestController(RequestService requestService) {
         this.requestService = requestService;
     }
 
+    /** Crea un trámite con el body y la identidad de los headers. */
     @PostMapping
     public ResponseEntity<MunicipalRequest> create(
             @Valid @RequestBody CreateRequestDto body,
@@ -55,6 +57,7 @@ public class RequestController {
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
 
+    /** Cambia el estado. El rol llega en el header. */
     @PutMapping("/{id}/status")
     public MunicipalRequest updateStatus(
             @PathVariable String id,
@@ -70,6 +73,7 @@ public class RequestController {
         );
     }
 
+    /** Devuelve un trámite. Quien no es personal solo obtiene el suyo. */
     @GetMapping("/{id}")
     public MunicipalRequest getById(
             @PathVariable String id,
@@ -79,6 +83,7 @@ public class RequestController {
         return requestService.getById(id, new CallerContext(userId, roles));
     }
 
+    /** Lista trámites. Las fechas from y to llegan como día, por ejemplo 2026-10-25. */
     @GetMapping
     public List<MunicipalRequest> list(
             @RequestParam(required = false) RequestStatus status,
@@ -91,10 +96,10 @@ public class RequestController {
     }
     
     /**
-     * Catálogo de códigos para alinear el combo del front. Va antes de /{id}.
+     * Lista fija de tipos de trámite. La fuente vigente es el servicio catalog.
+     * Sigue respondiendo para no romper a quien todavía la pide, y va antes de /{id}.
      *
      * @deprecated la fuente de verdad de los tipos de trámite es GET /api/catalog/procedures.
-     * Este endpoint sigue respondiendo la lista fija de siempre.
      */
     @Deprecated
     @GetMapping("/meta/procedure-types")
@@ -102,7 +107,7 @@ public class RequestController {
         return ProcedureTypes.asMap();
     }
 
-    /** Siguientes estados válidos por estado. El front no copia la máquina de estados, la pide acá. */
+    /** Devuelve los cambios de estado permitidos para que el cliente no copie la máquina de estados. */
     @GetMapping("/meta/transitions")
     public Map<String, List<String>> transitions() {
         return RequestTransitions.asNamesMap();

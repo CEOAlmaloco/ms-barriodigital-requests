@@ -10,8 +10,8 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 
 /**
- * Confirma al arrancar que el pool Oracle responde (EP1-21).
- * No imprime URL completa ni passwords.
+ * Al arrancar, abre una conexión y registra que Oracle respondió.
+ * El log lleva producto y versión, sin clave ni URL.
  */
 @Component
 public class OracleDataSourceProbe implements ApplicationRunner {
@@ -20,10 +20,12 @@ public class OracleDataSourceProbe implements ApplicationRunner {
 
     private final DataSource dataSource;
 
+    /** Recibe el DataSource del pool. */
     public OracleDataSourceProbe(DataSource dataSource) {
         this.dataSource = dataSource;
     }
 
+    /** Abre una conexión y deja en el log que el pool respondió. */
     @Override
     public void run(ApplicationArguments args) throws Exception {
         try (Connection connection = dataSource.getConnection()) {

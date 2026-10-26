@@ -1,7 +1,8 @@
 package cl.duoc.barriodigital.requests.web;
 
 /**
- * Identidad que el BFF reenvía tras validar el JWT (nunca viene del body).
+ * Identidad de quien llama, reenviada por el BFF en headers después de validar el JWT.
+ * Este servicio no recibe el token.
  */
 public record CallerContext(
         String userId,
@@ -14,31 +15,32 @@ public record CallerContext(
     public static final String HEADER_USER_ID = "X-User-Id";
     public static final String HEADER_USER_ROLES = "X-User-Roles";
     public static final String HEADER_USER_NAME = "X-User-Name";
-    /** EP2-20 lo reenvía en el POST. El email no va en el body. */
+    /** Correo del solicitante. El BFF lo reenvía en el POST; no va en el body. */
     public static final String HEADER_USER_EMAIL = "X-User-Email";
-    /** Label del tipo según catalog. El BFF lo manda codificado en URL (UTF-8), solo en el POST. */
+    /** Etiqueta del tipo según catalog. El BFF la manda codificada en URL (UTF-8), solo en el POST. */
     public static final String HEADER_PROCEDURE_LABEL = "X-Procedure-Label";
 
-    /** Identidad sin label del tipo. Solo el alta lo usa. */
+    /** Identidad sin etiqueta del tipo. */
     public CallerContext(String userId, String rolesHeader, String userName, String userEmail) {
         this(userId, rolesHeader, userName, userEmail, null);
     }
 
-    /** Identidad sin email. GET y cambio de estado no lo necesitan. */
+    /** Identidad sin correo. Consultar y cambiar el estado no lo usan. */
     public CallerContext(String userId, String rolesHeader, String userName) {
         this(userId, rolesHeader, userName, null, null);
     }
 
-    /** Identidad sin nombre ni email. El alta usa solicitanteId como respaldo del nombre. */
+    /** Identidad solo con id y roles. El alta usa el id como respaldo del nombre. */
     public CallerContext(String userId, String rolesHeader) {
         this(userId, rolesHeader, null, null, null);
     }
 
-    /** Contrato EP1.5-01: solo Funcionario cambia estado (Admin no). */
+    /** Indica si el rol es Funcionario. Solo ese rol cambia el estado; Admin no. */
     public boolean isFuncionario() {
         return hasRole("Funcionario") || hasRole("ROLE_Funcionario");
     }
 
+    /** Indica si el rol es Admin, Funcionario o Auditor. */
     public boolean isStaff() {
         return hasRole("Admin")
                 || hasRole("Funcionario")
@@ -48,6 +50,7 @@ public record CallerContext(
                 || hasRole("ROLE_Auditor");
     }
 
+    /** Busca el rol en el header, separado por comas, sin distinguir mayúsculas. */
     private boolean hasRole(String expected) {
         if (rolesHeader == null || rolesHeader.isBlank()) {
             return false;
@@ -60,7 +63,7 @@ public record CallerContext(
         return false;
     }
 
-    /** Vecino (u otro no staff): solo ve/crea como dueño de sus trámites. */
+    /** Quien no es personal solo ve sus propios trámites. */
     public boolean mustFilterOwnRequests() {
         return !isStaff();
     }
