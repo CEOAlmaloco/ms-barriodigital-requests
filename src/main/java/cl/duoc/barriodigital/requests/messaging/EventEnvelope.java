@@ -4,7 +4,8 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * Sobre del contrato EP2-01. {@code correlationId} es el id del trámite.
+ * Evento que publica requests.
+ * Lleva el tipo, un eventId nuevo, la hora, el traceId, el correlationId (id del trámite) y el payload.
  */
 public record EventEnvelope(
         String type,

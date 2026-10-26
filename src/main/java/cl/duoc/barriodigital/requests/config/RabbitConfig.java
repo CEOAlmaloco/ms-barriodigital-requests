@@ -13,9 +13,8 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import java.util.concurrent.Executor;
 
 /**
- * requests declara los exchanges. notify declara colas, DLQ y bindings.
- * {@code cmd.dead.dlx} también: el contrato dice que este servicio lo publica al arrancar.
- * La declaración ocurre al abrir la conexión, así que un broker caído no impide partir.
+ * Declara los exchanges de requests: cmd.topic, cmd.direct y cmd.dead.dlx.
+ * Las colas las declara notify. La declaración ocurre al abrir la conexión, así que un broker caído no impide arrancar.
  */
 @Configuration
 @EnableConfigurationProperties(RabbitNamesProperties.class)
@@ -25,33 +24,39 @@ public class RabbitConfig {
 
     private final RabbitNamesProperties names;
 
+    /** Recibe los nombres configurados. Con ellos se crean los exchanges. */
     public RabbitConfig(RabbitNamesProperties names) {
         this.names = names;
     }
 
-    /** cmd.topic: email.* y certificate.*. */
+    /** Exchange cmd.topic, durable. Por ahí salen los eventos que no son crew.ticket, como email y certificate. */
     @Bean
     TopicExchange topicExchange() {
         return ExchangeBuilder.topicExchange(names.exchange().topic()).durable(true).build();
     }
 
-    /** cmd.direct: crew.ticket. */
+    /** Exchange cmd.direct, durable. crew.ticket sale por acá con esa routing key. */
     @Bean
     DirectExchange directExchange() {
         return ExchangeBuilder.directExchange(names.exchange().direct()).durable(true).build();
     }
 
-    /** cmd.dead.dlx: lo declara requests para que exista aunque notify todavía no arranque. */
+    /** Exchange cmd.dead.dlx. Lo declara requests para que exista aunque notify todavía no arranque. */
     @Bean
     DirectExchange deadExchange() {
         return ExchangeBuilder.directExchange(names.exchange().dead()).durable(true).build();
     }
 
+    /** Convierte el evento Java a JSON antes de publicarlo. */
     @Bean
     Jackson2JsonMessageConverter jackson2JsonMessageConverter(com.fasterxml.jackson.databind.ObjectMapper mapper) {
         return new Jackson2JsonMessageConverter(mapper);
     }
 
+    /**
+     * Cliente que publica en RabbitMQ.
+     * mandatory hace que el broker devuelva el mensaje si ninguna cola tiene binding para esa routing key.
+     */
     @Bean
     RabbitTemplate rabbitTemplate(
             org.springframework.amqp.rabbit.connection.ConnectionFactory connectionFactory,
@@ -62,6 +67,10 @@ public class RabbitConfig {
         return template;
     }
 
+    /**
+     * Hilos que publican sin frenar la respuesta HTTP.
+     * Hay 2 hilos fijos, puede crecer a 4, y la cola interna admite 200 publicaciones en espera.
+     */
     @Bean(name = PUBLISHER_EXECUTOR)
     Executor eventPublisherExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();

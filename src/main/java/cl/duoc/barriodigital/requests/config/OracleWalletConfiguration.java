@@ -13,26 +13,31 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
- * Aplica ORACLE_WALLET_DIR como TNS_ADMIN antes de crear el DataSource (EP1-21).
+ * Fija la carpeta del wallet de Oracle como TNS_ADMIN antes de abrir el DataSource.
+ * Si la carpeta no existe o le falta tnsnames.ora, el servicio no arranca.
  */
 @Configuration
 public class OracleWalletConfiguration {
 
+    /** Registra el paso que corre antes de crear la conexión. */
     @Bean
     static BeanFactoryPostProcessor oracleWalletTnsAdmin() {
         return new OracleWalletTnsAdminPostProcessor();
     }
 
+    /** Lee ORACLE_WALLET_DIR y, si viene, lo deja como carpeta TNS. */
     static final class OracleWalletTnsAdminPostProcessor
             implements BeanFactoryPostProcessor, EnvironmentAware {
 
         private Environment environment;
 
+        /** Guarda el entorno para leer ORACLE_WALLET_DIR. */
         @Override
         public void setEnvironment(Environment environment) {
             this.environment = environment;
         }
 
+        /** Si hay wallet, comprueba la carpeta y tnsnames.ora, y fija la propiedad. */
         @Override
         public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory) throws BeansException {
             String walletDir = environment.getProperty("ORACLE_WALLET_DIR");
