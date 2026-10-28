@@ -5,6 +5,7 @@ import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.messaging.EventPublisher;
 import cl.duoc.barriodigital.requests.messaging.RequestEventPayload;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
+import cl.duoc.barriodigital.requests.persistence.RequestActivityRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import org.junit.jupiter.api.Test;
@@ -47,6 +48,9 @@ class RequestServiceTest {
 
     @Mock
     private MunicipalRequestRepository repository;
+
+    @Mock
+    private RequestActivityRepository activity;
 
     @Mock
     private EventPublisher publisher;

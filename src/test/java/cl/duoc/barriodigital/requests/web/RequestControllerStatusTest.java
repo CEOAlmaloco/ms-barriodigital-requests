@@ -2,6 +2,7 @@ package cl.duoc.barriodigital.requests.web;
 
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
+import cl.duoc.barriodigital.requests.service.RequestActivityService;
 import cl.duoc.barriodigital.requests.service.RequestService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -29,6 +30,9 @@ class RequestControllerStatusTest {
 
     @MockBean
     private RequestService requestService;
+
+    @MockBean
+    private RequestActivityService activityService;
 
     @Test
     void putStatusDevuelve200ConRecurso() throws Exception {

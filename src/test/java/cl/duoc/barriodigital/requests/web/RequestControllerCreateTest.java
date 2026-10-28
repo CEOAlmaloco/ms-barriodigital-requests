@@ -1,6 +1,7 @@
 package cl.duoc.barriodigital.requests.web;
 
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
+import cl.duoc.barriodigital.requests.service.RequestActivityService;
 import cl.duoc.barriodigital.requests.service.RequestService;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import org.junit.jupiter.api.Test;
@@ -29,6 +30,9 @@ class RequestControllerCreateTest {
 
     @MockBean
     private RequestService requestService;
+
+    @MockBean
+    private RequestActivityService activityService;
 
     @Test
     void postGuardaElEmailDelHeaderYLoDevuelve() throws Exception {

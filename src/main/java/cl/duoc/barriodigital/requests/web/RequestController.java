@@ -4,9 +4,12 @@ import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.ProcedureTypes;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.domain.RequestTransitions;
+import cl.duoc.barriodigital.requests.service.RequestActivityService;
 import cl.duoc.barriodigital.requests.service.RequestService;
+import cl.duoc.barriodigital.requests.web.dto.ActividadView;
 import cl.duoc.barriodigital.requests.web.dto.ChangeStatusDto;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
+import cl.duoc.barriodigital.requests.web.dto.RegisterGestionDto;
 import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
@@ -34,10 +37,12 @@ import java.util.Map;
 public class RequestController {
 
     private final RequestService requestService;
+    private final RequestActivityService activityService;
 
-    /** Recibe el servicio que aplica las reglas del trámite. */
-    public RequestController(RequestService requestService) {
+    /** Recibe el servicio del trámite y el del historial. */
+    public RequestController(RequestService requestService, RequestActivityService activityService) {
         this.requestService = requestService;
+        this.activityService = activityService;
     }
 
     /** Crea un trámite con el body y la identidad de los headers. */
@@ -63,14 +68,38 @@ public class RequestController {
             @PathVariable String id,
             @Valid @RequestBody ChangeStatusDto body,
             @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
-            @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles
+            @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles,
+            @RequestHeader(value = CallerContext.HEADER_USER_NAME, required = false) String userName
     ) {
         return requestService.changeStatus(
                 id,
                 body.status(),
                 body.rejectionReason(),
-                new CallerContext(userId, roles)
+                new CallerContext(userId, roles, userName)
         );
+    }
+
+    /** Historial, gestiones visibles según el rol y los tiempos que sí se pueden calcular. */
+    @GetMapping("/{id}/actividad")
+    public ActividadView actividad(
+            @PathVariable String id,
+            @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
+            @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles
+    ) {
+        return activityService.get(id, new CallerContext(userId, roles));
+    }
+
+    /** Registra una gestión declarada por el funcionario. No confirma que el vecino haya atendido. */
+    @PostMapping("/{id}/gestiones")
+    public ResponseEntity<ActividadView> registrarGestion(
+            @PathVariable String id,
+            @Valid @RequestBody RegisterGestionDto body,
+            @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
+            @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles,
+            @RequestHeader(value = CallerContext.HEADER_USER_NAME, required = false) String userName
+    ) {
+        ActividadView view = activityService.registerGestion(id, body, new CallerContext(userId, roles, userName));
+        return ResponseEntity.status(HttpStatus.CREATED).body(view);
     }
 
     /** Devuelve un trámite. Quien no es personal solo obtiene el suyo. */

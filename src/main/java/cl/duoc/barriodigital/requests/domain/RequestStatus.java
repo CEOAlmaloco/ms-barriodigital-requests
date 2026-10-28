@@ -5,10 +5,21 @@ package cl.duoc.barriodigital.requests.domain;
  * Empieza en INGRESADO, puede seguir por ADMITIDO, EN_GESTION y EN_TERRENO, y termina en RESUELTO o RECHAZADO.
  */
 public enum RequestStatus {
-    INGRESADO,
-    ADMITIDO,
-    EN_GESTION,
-    EN_TERRENO,
-    RESUELTO,
-    RECHAZADO
+    INGRESADO("Ingresado"),
+    ADMITIDO("Admitido"),
+    EN_GESTION("En gestión"),
+    EN_TERRENO("En terreno"),
+    RESUELTO("Resuelto"),
+    RECHAZADO("Rechazado");
+
+    private final String label;
+
+    RequestStatus(String label) {
+        this.label = label;
+    }
+
+    /** Nombre que se muestra y que queda escrito en el historial. */
+    public String label() {
+        return label;
+    }
 }

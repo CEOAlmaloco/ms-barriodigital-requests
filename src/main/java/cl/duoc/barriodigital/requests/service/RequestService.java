@@ -2,11 +2,13 @@ package cl.duoc.barriodigital.requests.service;
 
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.ProcedureTypes;
+import cl.duoc.barriodigital.requests.domain.RequestActivity;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.domain.RequestTransitions;
 import cl.duoc.barriodigital.requests.messaging.EventPublisher;
 import cl.duoc.barriodigital.requests.messaging.RequestEventPayload;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
+import cl.duoc.barriodigital.requests.persistence.RequestActivityRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import org.springframework.http.HttpStatus;
@@ -40,11 +42,17 @@ public class RequestService {
     static final int PROCEDURE_LABEL_MAX = 120;
 
     private final MunicipalRequestRepository repository;
+    private final RequestActivityRepository activity;
     private final EventPublisher publisher;
 
-    /** Recibe el repositorio de trámites y el publicador de eventos. */
-    public RequestService(MunicipalRequestRepository repository, EventPublisher publisher) {
+    /** Recibe el repositorio de trámites, el historial y el publicador de eventos. */
+    public RequestService(
+            MunicipalRequestRepository repository,
+            RequestActivityRepository activity,
+            EventPublisher publisher
+    ) {
         this.repository = repository;
+        this.activity = activity;
         this.publisher = publisher;
     }
 
@@ -79,6 +87,12 @@ public class RequestService {
                 procedureLabel
         );
         MunicipalRequest saved = repository.save(request);
+        activity.save(RequestActivity.created(
+                saved.getId(),
+                saved.getCreatedAt(),
+                caller.userId().trim(),
+                snapshotName(caller.userName(), caller.userId())
+        ));
         publishAfterCommit(saved, List.of("certificate.receipt"));
         return saved;
     }
@@ -155,6 +169,15 @@ public class RequestService {
         RequestStatus previous = found.getStatus();
         found.applyStatus(target, rejectionReason);
         MunicipalRequest saved = repository.save(found);
+        activity.save(RequestActivity.statusChanged(
+                saved.getId(),
+                saved.getUpdatedAt(),
+                caller.userId().trim(),
+                snapshotName(caller.userName(), caller.userId()),
+                previous,
+                saved.getStatus(),
+                target == RequestStatus.RECHAZADO ? rejectionReason : null
+        ));
         publishStatusEventsAfterCommit(previous, saved);
         return saved;
     }
