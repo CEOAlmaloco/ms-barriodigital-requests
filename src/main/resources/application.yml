@@ -7,6 +7,10 @@ server:
 spring:
   application:
     name: ms-barriodigital-requests
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
   # Carga .env local si existe (nunca se sube a git). Ver .env.example.
   config:
     import: optional:file:.env[.properties]
