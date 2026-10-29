@@ -128,6 +128,12 @@ Colección Postman: `postman/EP1-14-requests.postman_collection.json`.
 Para evidenciar en Oracle:  
 `SELECT id, title, address, solicitante_id, status, created_at FROM municipal_requests ORDER BY created_at DESC;`
 
+### Imagen de respaldo opcional
+
+El alta acepta una única imagen opcional mediante `multipart/form-data`: la parte `request` contiene el mismo JSON descrito arriba y la parte `attachment` contiene la imagen. Se permiten JPEG y PNG; la interfaz también acepta WebP y lo convierte a PNG antes de enviarlo. El servicio verifica y decodifica los bytes (no confía en el nombre ni en el MIME declarado), limita el archivo a 5 MB y a 6000 px por lado/12 MP, y vuelve a codificarlo para quitar metadatos. SVG y otros formatos no se aceptan.
+
+Los bytes normalizados se guardan como BLOB en `municipal_request_attachments`, separados de los listados; `hasAttachment` solo indica si hay una imagen. `GET /api/requests/{id}/attachment` entrega la imagen al titular o a Funcionario/Admin/Auditor, y oculta con 404 los trámites ajenos. El BFF aplica autenticación JWT y es el único acceso público; el servicio requests no debe exponerse directamente.
+
 ## Docker (EP1-24)
 
 La imagen **no** lleva wallet ni `.env` adentro: se montan por volumen y variables.

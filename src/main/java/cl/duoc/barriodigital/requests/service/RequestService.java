@@ -3,11 +3,13 @@ package cl.duoc.barriodigital.requests.service;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.ProcedureTypes;
 import cl.duoc.barriodigital.requests.domain.RequestActivity;
+import cl.duoc.barriodigital.requests.domain.RequestAttachment;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.domain.RequestTransitions;
 import cl.duoc.barriodigital.requests.messaging.EventPublisher;
 import cl.duoc.barriodigital.requests.messaging.RequestEventPayload;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
+import cl.duoc.barriodigital.requests.persistence.RequestAttachmentRepository;
 import cl.duoc.barriodigital.requests.persistence.RequestActivityRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
@@ -43,16 +45,19 @@ public class RequestService {
 
     private final MunicipalRequestRepository repository;
     private final RequestActivityRepository activity;
+    private final RequestAttachmentRepository attachments;
     private final EventPublisher publisher;
 
-    /** Recibe el repositorio de trámites, el historial y el publicador de eventos. */
+    /** Recibe los repositorios del trámite y su imagen, el historial y el publicador de eventos. */
     public RequestService(
             MunicipalRequestRepository repository,
             RequestActivityRepository activity,
+            RequestAttachmentRepository attachments,
             EventPublisher publisher
     ) {
         this.repository = repository;
         this.activity = activity;
+        this.attachments = attachments;
         this.publisher = publisher;
     }
 
@@ -62,6 +67,16 @@ public class RequestService {
      */
     @Transactional
     public MunicipalRequest create(CreateRequestDto body, CallerContext caller) {
+        return create(body, caller, null);
+    }
+
+    /** Crea el trámite y su imagen opcional dentro de una sola transacción. */
+    @Transactional
+    public MunicipalRequest create(
+            CreateRequestDto body,
+            CallerContext caller,
+            ImageAttachmentSanitizer.SanitizedImage image
+    ) {
         requireUserId(caller);
 
         String procedureType = ProcedureTypes.normalize(body.procedureType());
@@ -86,7 +101,12 @@ public class RequestService {
                 snapshotEmail(caller.userEmail()),
                 procedureLabel
         );
+        LocationRules.apply(request, body);
+        request.setHasAttachment(image != null);
         MunicipalRequest saved = repository.save(request);
+        if (image != null) {
+            attachments.save(new RequestAttachment(saved, image));
+        }
         activity.save(RequestActivity.created(
                 saved.getId(),
                 saved.getCreatedAt(),
@@ -97,6 +117,21 @@ public class RequestService {
         return saved;
     }
 
+    /** Devuelve la imagen solo al titular del trámite o al personal autorizado. */
+    @Transactional(readOnly = true)
+    public RequestAttachmentContent getAttachment(String id, CallerContext caller) {
+        MunicipalRequest request = repository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado"));
+        requireAttachmentAccess(request, caller);
+        RequestAttachment attachment = attachments.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Imagen no encontrada"));
+        return new RequestAttachmentContent(
+                attachment.getContent(),
+                attachment.getContentType(),
+                attachment.getFileName()
+        );
+    }
+
     /** Devuelve un trámite. Si es de otra persona y quien pide no es personal, responde que no existe. */
     @Transactional(readOnly = true)
     public MunicipalRequest getById(String id, CallerContext caller) {
@@ -104,10 +139,15 @@ public class RequestService {
         MunicipalRequest found = repository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado"));
 
-        if (caller.mustFilterOwnRequests() && !caller.userId().equals(found.getSolicitanteId())) {
+        requireAttachmentAccess(found, caller);
+        return found;
+    }
+
+    private void requireAttachmentAccess(MunicipalRequest request, CallerContext caller) {
+        requireUserId(caller);
+        if (caller.mustFilterOwnRequests() && !caller.userId().trim().equals(request.getSolicitanteId())) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado");
         }
-        return found;
     }
 
     /** Lista trámites. Quien no es personal solo ve los suyos. */

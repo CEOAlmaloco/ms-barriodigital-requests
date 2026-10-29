@@ -1,6 +1,7 @@
 package cl.duoc.barriodigital.requests.web;
 
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
+import cl.duoc.barriodigital.requests.service.ImageAttachmentSanitizer;
 import cl.duoc.barriodigital.requests.service.RequestActivityService;
 import cl.duoc.barriodigital.requests.service.RequestService;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
@@ -9,6 +10,7 @@ import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -18,6 +20,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -33,6 +38,9 @@ class RequestControllerCreateTest {
 
     @MockBean
     private RequestActivityService activityService;
+
+    @MockBean
+    private ImageAttachmentSanitizer imageSanitizer;
 
     @Test
     void postGuardaElEmailDelHeaderYLoDevuelve() throws Exception {
@@ -120,5 +128,43 @@ class RequestControllerCreateTest {
         ArgumentCaptor<CallerContext> caller = ArgumentCaptor.forClass(CallerContext.class);
         verify(requestService).create(any(CreateRequestDto.class), caller.capture());
         assertNull(caller.getValue().procedureLabel());
+    }
+
+    @Test
+    void postMultipartValidaYGuardaUnaImagenNormalizada() throws Exception {
+        var image = new ImageAttachmentSanitizer.SanitizedImage(
+                new byte[]{1, 2, 3},
+                "image/png",
+                "evidencia.png"
+        );
+        when(imageSanitizer.sanitize(any())).thenReturn(image);
+        MunicipalRequest saved = new MunicipalRequest("titulo", "descripcion", "bache", "Calle 1", "oid-1");
+        saved.setHasAttachment(true);
+        when(requestService.create(any(CreateRequestDto.class), any(CallerContext.class), eq(image)))
+                .thenReturn(saved);
+
+        MockMultipartFile request = new MockMultipartFile(
+                "request",
+                "",
+                MediaType.APPLICATION_JSON_VALUE,
+                "{\"description\":\"Hueco\",\"procedureType\":\"bache\",\"address\":\"Calle 1\"}".getBytes()
+        );
+        MockMultipartFile attachment = new MockMultipartFile(
+                "attachment",
+                "original.svg",
+                "image/png",
+                new byte[]{1, 2, 3}
+        );
+
+        mockMvc.perform(multipart("/api/requests")
+                        .file(request)
+                        .file(attachment)
+                        .header(CallerContext.HEADER_USER_ID, "oid-1")
+                        .header(CallerContext.HEADER_USER_ROLES, "Vecino"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.hasAttachment").value(true));
+
+        verify(imageSanitizer).sanitize(attachment);
+        verify(requestService).create(any(CreateRequestDto.class), any(CallerContext.class), eq(image));
     }
 }

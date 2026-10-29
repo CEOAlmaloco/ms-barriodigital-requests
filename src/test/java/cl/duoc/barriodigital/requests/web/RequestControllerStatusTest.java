@@ -2,6 +2,7 @@ package cl.duoc.barriodigital.requests.web;
 
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
+import cl.duoc.barriodigital.requests.service.ImageAttachmentSanitizer;
 import cl.duoc.barriodigital.requests.service.RequestActivityService;
 import cl.duoc.barriodigital.requests.service.RequestService;
 import org.junit.jupiter.api.Test;
@@ -33,6 +34,9 @@ class RequestControllerStatusTest {
 
     @MockBean
     private RequestActivityService activityService;
+
+    @MockBean
+    private ImageAttachmentSanitizer imageSanitizer;
 
     @Test
     void putStatusDevuelve200ConRecurso() throws Exception {

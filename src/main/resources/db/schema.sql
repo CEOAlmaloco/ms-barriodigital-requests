@@ -8,13 +8,29 @@ CREATE TABLE municipal_requests (
     procedure_type  VARCHAR2(100)  NOT NULL,
     procedure_label VARCHAR2(120),
     address         VARCHAR2(300)  NOT NULL,
+    sector          VARCHAR2(40),
+    location_reference VARCHAR2(200),
+    latitude        NUMBER,
+    longitude       NUMBER,
+    location_precision VARCHAR2(20),
     solicitante_id  VARCHAR2(64)   NOT NULL,
     solicitante_nombre VARCHAR2(200),
     solicitante_email  VARCHAR2(254),
     status          VARCHAR2(30)   NOT NULL,
     rejection_reason VARCHAR2(500),
+    has_attachment  NUMBER(1) DEFAULT 0 NOT NULL,
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL,
     updated_at      TIMESTAMP WITH TIME ZONE NOT NULL
+);
+
+CREATE TABLE municipal_request_attachments (
+    request_id      VARCHAR2(36)  PRIMARY KEY,
+    attachment_data BLOB          NOT NULL,
+    content_type    VARCHAR2(30)  NOT NULL,
+    file_name       VARCHAR2(40)  NOT NULL,
+    created_at      TIMESTAMP WITH TIME ZONE NOT NULL,
+    CONSTRAINT fk_request_attachment_request
+        FOREIGN KEY (request_id) REFERENCES municipal_requests (id) ON DELETE CASCADE
 );
 
 CREATE INDEX idx_municipal_requests_status ON municipal_requests (status);
