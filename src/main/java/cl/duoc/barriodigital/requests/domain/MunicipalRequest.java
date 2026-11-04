@@ -47,6 +47,27 @@ public class MunicipalRequest {
     @Column(nullable = false, length = 300)
     private String address;
 
+    /** Código de sector de la comuna. Puede faltar en trámites anteriores. */
+    @Column(length = 40)
+    private String sector;
+
+    /** Referencia para encontrar el lugar, por ejemplo un poste o un local. */
+    @Column(name = "location_reference", length = 200)
+    private String locationReference;
+
+    /** Latitud del punto, si quien ingresó el trámite lo marcó. */
+    @Column
+    private Double latitude;
+
+    /** Longitud del punto, si quien ingresó el trámite lo marcó. */
+    @Column
+    private Double longitude;
+
+    /** EXACTO o APROXIMADO. Solo cuando hay punto. */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "location_precision", length = 20)
+    private LocationPrecision locationPrecision;
+
     /** Identificador del solicitante (oid o sub de Entra). Lo envía el BFF por header, no el body. */
     @Column(name = "solicitante_id", nullable = false, length = 64)
     private String solicitanteId;
@@ -73,6 +94,10 @@ public class MunicipalRequest {
     /** Motivo del rechazo. Solo se guarda cuando el estado es RECHAZADO, con un máximo de 500 caracteres. */
     @Column(name = "rejection_reason", length = 500)
     private String rejectionReason;
+
+    /** Indica si el trámite tiene una imagen privada asociada en su propia tabla. */
+    @Column(name = "has_attachment", nullable = false, columnDefinition = "NUMBER(1) DEFAULT 0")
+    private boolean hasAttachment;
 
     /** Momento en que se creó el trámite. */
     @Column(name = "created_at", nullable = false)
@@ -201,6 +226,46 @@ public class MunicipalRequest {
         return address;
     }
 
+    /** Código de sector, o null si no se indicó. */
+    public String getSector() {
+        return sector;
+    }
+
+    /** Referencia para encontrar el lugar. */
+    public String getLocationReference() {
+        return locationReference;
+    }
+
+    /** Latitud del punto, o null si no hay punto. */
+    public Double getLatitude() {
+        return latitude;
+    }
+
+    /** Longitud del punto, o null si no hay punto. */
+    public Double getLongitude() {
+        return longitude;
+    }
+
+    /** Si el punto es exacto o aproximado. */
+    public LocationPrecision getLocationPrecision() {
+        return locationPrecision;
+    }
+
+    /** Guarda sector, referencia y punto. No reemplaza la dirección escrita. */
+    public void placeLocation(
+            String sector,
+            String locationReference,
+            Double latitude,
+            Double longitude,
+            LocationPrecision locationPrecision
+    ) {
+        this.sector = sector;
+        this.locationReference = locationReference;
+        this.latitude = latitude;
+        this.longitude = longitude;
+        this.locationPrecision = locationPrecision;
+    }
+
     /** Id de quien pidió el trámite. */
     public String getSolicitanteId() {
         return solicitanteId;
@@ -234,6 +299,16 @@ public class MunicipalRequest {
     /** Motivo, solo si el estado es RECHAZADO. */
     public String getRejectionReason() {
         return rejectionReason;
+    }
+
+    /** Indica si hay una imagen adjunta, sin cargar el contenido binario. */
+    public boolean isHasAttachment() {
+        return hasAttachment;
+    }
+
+    /** Actualiza la presencia de la imagen al crear el trámite y su adjunto en la misma transacción. */
+    public void setHasAttachment(boolean hasAttachment) {
+        this.hasAttachment = hasAttachment;
     }
 
     /** Cambia el estado y marca la hora. No toca el motivo de rechazo. */

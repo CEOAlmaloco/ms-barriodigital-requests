@@ -1,10 +1,14 @@
 package cl.duoc.barriodigital.requests.service;
 
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
+import cl.duoc.barriodigital.requests.domain.RequestAttachment;
+import cl.duoc.barriodigital.requests.domain.RequestAttachment;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.messaging.EventPublisher;
 import cl.duoc.barriodigital.requests.messaging.RequestEventPayload;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
+import cl.duoc.barriodigital.requests.persistence.RequestAttachmentRepository;
+import cl.duoc.barriodigital.requests.persistence.RequestActivityRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import org.junit.jupiter.api.Test;
@@ -18,6 +22,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -28,6 +33,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -41,12 +47,19 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.mock;
 
 @ExtendWith(MockitoExtension.class)
 class RequestServiceTest {
 
     @Mock
     private MunicipalRequestRepository repository;
+
+    @Mock
+    private RequestActivityRepository activity;
+
+    @Mock
+    private RequestAttachmentRepository attachments;
 
     @Mock
     private EventPublisher publisher;
@@ -224,6 +237,43 @@ class RequestServiceTest {
         ArgumentCaptor<MunicipalRequest> captor = ArgumentCaptor.forClass(MunicipalRequest.class);
         verify(repository).save(captor.capture());
         assertEquals("oid-vecino-1", captor.getValue().getSolicitanteId());
+        assertNull(captor.getValue().getLatitude());
+    }
+
+    @Test
+    void createGuardaSectorYPuntoDentroDeLaComuna() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MunicipalRequest created = requestService.create(
+                new CreateRequestDto(
+                        "Hueco",
+                        "bache",
+                        "Camino a Pitril",
+                        "pitril",
+                        "frente al puente",
+                        -37.95,
+                        -71.40,
+                        "EXACTO"
+                ),
+                new CallerContext("oid-vecino-1", "Vecino")
+        );
+
+        assertEquals("pitril", created.getSector());
+        assertEquals("frente al puente", created.getLocationReference());
+        assertEquals(-37.95, created.getLatitude());
+        assertEquals(-71.40, created.getLongitude());
+        assertEquals(cl.duoc.barriodigital.requests.domain.LocationPrecision.EXACTO, created.getLocationPrecision());
+    }
+
+    @Test
+    void createRechazaUnPuntoFueraDeLaComuna() {
+        ResponseStatusException error = assertThrows(ResponseStatusException.class, () -> requestService.create(
+                new CreateRequestDto("Hueco", "bache", "Otra ciudad", null, null, -33.45, -70.66, "EXACTO"),
+                new CallerContext("oid-vecino-1", "Vecino")
+        ));
+
+        assertEquals(HttpStatus.BAD_REQUEST, error.getStatusCode());
+        verify(repository, never()).save(any());
     }
 
     @Test
@@ -489,6 +539,39 @@ class RequestServiceTest {
 
         CallerContext vecino = new CallerContext("mi-oid", "Vecino");
         assertThrows(ResponseStatusException.class, () -> requestService.getById("id-1", vecino));
+    }
+
+    @Test
+    void getAttachmentVecinoNoPuedeDescargarImagenDeOtroTramite() {
+        MunicipalRequest other = new MunicipalRequest("t", "d", "bache", "dir", "otro-oid");
+        when(repository.findById("id-1")).thenReturn(Optional.of(other));
+
+        ResponseStatusException exception = assertThrows(
+                ResponseStatusException.class,
+                () -> requestService.getAttachment("id-1", new CallerContext("mi-oid", "Vecino"))
+        );
+
+        assertEquals(404, exception.getStatusCode().value());
+        verifyNoInteractions(attachments);
+    }
+
+    @ParameterizedTest
+    @CsvSource({"Vecino,mi-oid", "Funcionario,func-1", "Admin,admin-1", "Auditor,auditor-1"})
+    void getAttachmentPermiteAlTitularYAlPersonal(String role, String userId) {
+        MunicipalRequest owned = new MunicipalRequest("t", "d", "bache", "dir", "mi-oid");
+        byte[] imageBytes = {1, 2, 3};
+        RequestAttachment attachment = mock(RequestAttachment.class);
+        when(repository.findById("id-1")).thenReturn(Optional.of(owned));
+        when(attachments.findById("id-1")).thenReturn(Optional.of(attachment));
+        when(attachment.getContent()).thenReturn(imageBytes);
+        when(attachment.getContentType()).thenReturn("image/png");
+        when(attachment.getFileName()).thenReturn("evidencia.png");
+
+        var downloaded = requestService.getAttachment("id-1", new CallerContext(userId, role));
+
+        assertArrayEquals(imageBytes, downloaded.content());
+        assertEquals("image/png", downloaded.contentType());
+        assertEquals("evidencia.png", downloaded.fileName());
     }
 
     @Test

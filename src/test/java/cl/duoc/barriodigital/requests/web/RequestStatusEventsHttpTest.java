@@ -10,6 +10,10 @@ import cl.duoc.barriodigital.requests.messaging.EventPublisher;
 import cl.duoc.barriodigital.requests.messaging.EventEnvelope;
 import cl.duoc.barriodigital.requests.messaging.RequestEventPayload;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
+import cl.duoc.barriodigital.requests.persistence.RequestAttachmentRepository;
+import cl.duoc.barriodigital.requests.service.ImageAttachmentSanitizer;
+import cl.duoc.barriodigital.requests.service.RequestService;
+import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.Filter;
 import org.junit.jupiter.api.AfterEach;
@@ -71,6 +75,8 @@ class RequestStatusEventsHttpTest {
 
     @Autowired TestRestTemplate http;
     @Autowired MunicipalRequestRepository repository;
+    @Autowired RequestAttachmentRepository attachmentRepository;
+    @Autowired RequestService requestService;
     @Autowired PlatformTransactionManager transactions;
     @Autowired ObjectMapper mapper;
     @Autowired Jackson2JsonMessageConverter converter;
@@ -96,6 +102,26 @@ class RequestStatusEventsHttpTest {
         ((Logger) LoggerFactory.getLogger(EventPublisher.class)).detachAppender(appender);
         appender.stop();
         Application.HTTP_THREAD.set(null);
+    }
+
+    @Test
+    void persisteLaImagenConElIdGeneradoDelTramite() {
+        var image = new ImageAttachmentSanitizer.SanitizedImage(
+                new byte[]{1, 2, 3},
+                "image/png",
+                "evidencia.png"
+        );
+
+        MunicipalRequest created = requestService.create(
+                new CreateRequestDto("Hueco", "bache", "Calle 1"),
+                new CallerContext("oid-attachment-test", "Vecino"),
+                image
+        );
+
+        assertTrue(created.isHasAttachment());
+        var stored = attachmentRepository.findById(created.getId()).orElseThrow();
+        assertEquals("image/png", stored.getContentType());
+        assertEquals(3, stored.getContent().length);
     }
 
     @ParameterizedTest
