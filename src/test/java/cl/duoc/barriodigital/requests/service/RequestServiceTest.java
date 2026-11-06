@@ -1,6 +1,7 @@
 package cl.duoc.barriodigital.requests.service;
 
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
+import cl.duoc.barriodigital.requests.domain.RequestActivity;
 import cl.duoc.barriodigital.requests.domain.RequestAttachment;
 import cl.duoc.barriodigital.requests.domain.RequestAttachment;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
@@ -27,6 +28,9 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -472,6 +476,74 @@ class RequestServiceTest {
     void sinHeaderDeNombreQuedaElIdYSinNingunoQuedaSinNombre() {
         assertEquals("oid-1", RequestService.snapshotName("   ", "oid-1"));
         assertEquals("Sin nombre", RequestService.snapshotName(null, "  "));
+    }
+
+    @Test
+    void createGuardaElNombreDecodificadoEnElTramiteYEnElHistorial() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MunicipalRequest created = requestService.create(
+                new CreateRequestDto("Hueco", "bache", "Calle 1"),
+                new CallerContext("oid-1", "Vecino", "Ana%20Mar%C3%ADa%20Mu%C3%B1oz")
+        );
+
+        ArgumentCaptor<RequestActivity> event = ArgumentCaptor.forClass(RequestActivity.class);
+        verify(activity).save(event.capture());
+        assertEquals("Ana María Muñoz", created.getSolicitanteNombre());
+        assertEquals("Ana María Muñoz", event.getValue().getActorName());
+    }
+
+    @Test
+    void changeStatusGuardaElNombreDecodificadoDelFuncionarioEnElHistorial() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-1", "Alex Ampuero");
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(stored));
+
+        requestService.changeStatus(
+                "id-1",
+                "ADMITIDO",
+                null,
+                new CallerContext("func-1", "Funcionario", "Jos%C3%A9%20Pe%C3%B1a")
+        );
+
+        ArgumentCaptor<RequestActivity> event = ArgumentCaptor.forClass(RequestActivity.class);
+        verify(activity).save(event.capture());
+        assertEquals("José Peña", event.getValue().getActorName());
+        assertEquals("Alex Ampuero", stored.getSolicitanteNombre());
+    }
+
+    @ParameterizedTest
+    @CsvSource(delimiter = '|', value = {
+            "Juan%2BPedro|Juan+Pedro",
+            "Ana María|Ana María",
+            "%20%20Ana%20%20|Ana",
+            "Ana%E|oid-1",
+            "Ana%0AMar%C3%ADa|oid-1",
+            "Ana%09Soto|oid-1",
+            "Ana%0D%0AX-User-Roles:%20Admin|oid-1"
+    })
+    void snapshotNameDecodificaYUsaElIdSiElValorNoEsValido(String header, String expected) {
+        assertEquals(expected, RequestService.snapshotName(header, "oid-1"));
+    }
+
+    @Test
+    void snapshotNameRecortaA200SinPartirUnEmoji() {
+        assertEquals(200, RequestService.snapshotName("a".repeat(250), "oid-1").length());
+
+        String encoded = URLEncoder.encode("a".repeat(199) + "😀" + "b", StandardCharsets.UTF_8);
+        assertEquals("a".repeat(199), RequestService.snapshotName(encoded, "oid-1"));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "2026-11-06, 2026-11-06T03:00:00Z, 2026-11-07T03:00:00Z",
+            "2026-09-06, 2026-09-06T04:00:00Z, 2026-09-07T03:00:00Z",
+            "2026-04-04, 2026-04-04T03:00:00Z, 2026-04-05T04:00:00Z"
+    })
+    void listFiltraDiasCompletosEnHoraDeChileInclusoConCambioDeHora(LocalDate day, String from, String before) {
+        requestService.list(null, day, day, new CallerContext("func-1", "Funcionario"));
+
+        verify(repository).search(isNull(), eq(Instant.parse(from)), eq(Instant.parse(before)), isNull());
     }
 
     @Test

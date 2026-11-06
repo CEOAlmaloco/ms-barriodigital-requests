@@ -26,8 +26,7 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalTime;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -42,6 +41,12 @@ public class RequestService {
 
     /** Tope de la columna procedure_label y del label en catalog. */
     static final int PROCEDURE_LABEL_MAX = 120;
+
+    /** Tope de las columnas solicitante_nombre y actor_name. */
+    static final int NAME_MAX = 200;
+
+    /** Zona de los días civiles del filtro, la misma de los cupos (EP1.5-03). */
+    static final ZoneId CIVIL_ZONE = ZoneId.of("America/Santiago");
 
     private final MunicipalRequestRepository repository;
     private final RequestActivityRepository activity;
@@ -150,7 +155,10 @@ public class RequestService {
         }
     }
 
-    /** Lista trámites. Quien no es personal solo ve los suyos. */
+    /**
+     * Lista trámites. Quien no es personal solo ve los suyos.
+     * from y to son días civiles en America/Santiago y los dos se incluyen completos.
+     */
     @Transactional(readOnly = true)
     public List<MunicipalRequest> list(
             RequestStatus status,
@@ -160,13 +168,17 @@ public class RequestService {
     ) {
         requireUserId(caller);
 
-        Instant fromInstant = from == null ? null : from.atStartOfDay().toInstant(ZoneOffset.UTC);
-        Instant toInstant = to == null
-                ? null
-                : to.atTime(LocalTime.of(23, 59, 59)).toInstant(ZoneOffset.UTC);
+        Instant fromInstant = from == null ? null : startOfCivilDay(from);
+        // Inicio del día siguiente, sin incluirlo: cubre el día entero, con microsegundos y cambios de hora.
+        Instant beforeInstant = to == null ? null : startOfCivilDay(to.plusDays(1));
 
         String ownerFilter = caller.mustFilterOwnRequests() ? caller.userId().trim() : null;
-        return repository.search(status, fromInstant, toInstant, ownerFilter);
+        return repository.search(status, fromInstant, beforeInstant, ownerFilter);
+    }
+
+    /** Primer instante del día en Chile. Si ese día la medianoche no existe por el cambio de hora, es la 01:00. */
+    static Instant startOfCivilDay(LocalDate day) {
+        return day.atStartOfDay(CIVIL_ZONE).toInstant();
     }
 
     /**
@@ -287,11 +299,12 @@ public class RequestService {
     }
 
     /**
-     * Nombre que queda guardado en el trámite.
-     * Si el header viene vacío, usa el id. Si tampoco hay id, queda "Sin nombre".
+     * Nombre que queda guardado en el trámite y en el historial. Llega codificado en URL para conservar tildes.
+     * Si el header viene vacío, mal codificado o con caracteres de control, usa el id. Si tampoco hay id, queda "Sin nombre".
+     * No supera 200 caracteres.
      */
     static String snapshotName(String headerName, String solicitanteId) {
-        String fromHeader = blankToNull(headerName);
+        String fromHeader = truncate(decodeHeader(headerName), NAME_MAX);
         if (fromHeader != null) {
             return fromHeader;
         }
@@ -309,7 +322,15 @@ public class RequestService {
      * Si falta o está mal codificada, queda null. No supera 120 caracteres.
      */
     static String snapshotProcedureLabel(String headerLabel) {
-        String raw = blankToNull(headerLabel);
+        return truncate(decodeHeader(headerLabel), PROCEDURE_LABEL_MAX);
+    }
+
+    /**
+     * Decodifica un header que el BFF manda codificado en URL (UTF-8).
+     * Vacío, mal codificado o con caracteres de control (saltos de línea, tabuladores) cuenta como ausente.
+     */
+    private static String decodeHeader(String header) {
+        String raw = blankToNull(header);
         if (raw == null) {
             return null;
         }
@@ -319,10 +340,19 @@ public class RequestService {
         } catch (IllegalArgumentException ex) {
             return null;
         }
-        if (decoded == null || decoded.length() <= PROCEDURE_LABEL_MAX) {
-            return decoded;
+        if (decoded == null || decoded.chars().anyMatch(Character::isISOControl)) {
+            return null;
         }
-        return decoded.substring(0, PROCEDURE_LABEL_MAX).trim();
+        return decoded;
+    }
+
+    /** Recorta al largo de la columna sin partir un carácter de dos unidades, como un emoji. */
+    private static String truncate(String value, int max) {
+        if (value == null || value.length() <= max) {
+            return value;
+        }
+        int end = Character.isHighSurrogate(value.charAt(max - 1)) ? max - 1 : max;
+        return value.substring(0, end).trim();
     }
 
     /** Un texto vacío se trata como ausente. */
