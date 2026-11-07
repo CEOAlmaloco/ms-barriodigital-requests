@@ -1,5 +1,7 @@
 package cl.duoc.barriodigital.requests.service;
 
+import cl.duoc.barriodigital.requests.domain.CivilTime;
+import cl.duoc.barriodigital.requests.domain.Folio;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.ProcedureTypes;
 import cl.duoc.barriodigital.requests.domain.RequestActivity;
@@ -26,7 +28,6 @@ import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -45,42 +46,38 @@ public class RequestService {
     /** Tope de las columnas solicitante_nombre y actor_name. */
     static final int NAME_MAX = 200;
 
-    /** Zona de los días civiles del filtro, la misma de los cupos (EP1.5-03). */
-    static final ZoneId CIVIL_ZONE = ZoneId.of("America/Santiago");
-
     private final MunicipalRequestRepository repository;
     private final RequestActivityRepository activity;
     private final RequestAttachmentRepository attachments;
     private final EventPublisher publisher;
+    private final FolioCounterService folios;
 
-    /** Recibe los repositorios del trámite y su imagen, el historial y el publicador de eventos. */
+    /** Recibe los repositorios del trámite y su imagen, el historial, el publicador de eventos y el contador de folios. */
     public RequestService(
             MunicipalRequestRepository repository,
             RequestActivityRepository activity,
             RequestAttachmentRepository attachments,
-            EventPublisher publisher
+            EventPublisher publisher,
+            FolioCounterService folios
     ) {
         this.repository = repository;
         this.activity = activity;
         this.attachments = attachments;
         this.publisher = publisher;
+        this.folios = folios;
     }
 
     /**
-     * Crea el trámite en INGRESADO.
-     * Después del commit publica el evento certificate.receipt.
+     * Crea el trámite en INGRESADO, con su imagen opcional y su folio, en una sola transacción.
+     * Se llama solo desde {@link RequestCreationOrchestrationService}, que ya dejó creada la fila del año
+     * y pasa el instante leído del Clock. Después del commit publica el evento certificate.receipt.
      */
-    @Transactional
-    public MunicipalRequest create(CreateRequestDto body, CallerContext caller) {
-        return create(body, caller, null);
-    }
-
-    /** Crea el trámite y su imagen opcional dentro de una sola transacción. */
     @Transactional
     public MunicipalRequest create(
             CreateRequestDto body,
             CallerContext caller,
-            ImageAttachmentSanitizer.SanitizedImage image
+            ImageAttachmentSanitizer.SanitizedImage image,
+            Instant createdAt
     ) {
         requireUserId(caller);
 
@@ -104,10 +101,13 @@ public class RequestService {
                 caller.userId().trim(),
                 snapshotName(caller.userName(), caller.userId()),
                 snapshotEmail(caller.userEmail()),
-                procedureLabel
+                procedureLabel,
+                createdAt
         );
         LocationRules.apply(request, body);
         request.setHasAttachment(image != null);
+        // El número se toma al final, ya validado el alta, para que el bloqueo del contador dure lo menos posible.
+        request.assignFolio(folios.next(Folio.yearOf(createdAt)));
         MunicipalRequest saved = repository.save(request);
         if (image != null) {
             attachments.save(new RequestAttachment(saved, image));
@@ -178,7 +178,7 @@ public class RequestService {
 
     /** Primer instante del día en Chile. Si ese día la medianoche no existe por el cambio de hora, es la 01:00. */
     static Instant startOfCivilDay(LocalDate day) {
-        return day.atStartOfDay(CIVIL_ZONE).toInstant();
+        return day.atStartOfDay(CivilTime.ZONE).toInstant();
     }
 
     /**
@@ -263,7 +263,7 @@ public class RequestService {
                 || !TransactionSynchronizationManager.isSynchronizationActive()) {
             throw new IllegalStateException("Los eventos de estado requieren una transaccion activa");
         }
-        RequestEventPayload payload = new RequestEventPayload(saved.getId(), saved.getProcedureType(),
+        RequestEventPayload payload = new RequestEventPayload(saved.getId(), saved.getFolio(), saved.getProcedureType(),
                 saved.getProcedureLabel(), saved.getAddress(), saved.getSolicitanteEmail());
         UUID traceId = UUID.randomUUID();
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
