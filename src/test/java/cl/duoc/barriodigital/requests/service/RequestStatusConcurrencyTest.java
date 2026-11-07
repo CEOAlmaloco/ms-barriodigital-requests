@@ -1,5 +1,6 @@
 package cl.duoc.barriodigital.requests.service;
 
+import cl.duoc.barriodigital.requests.TestFolios;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.messaging.EventPublisher;
@@ -39,7 +40,7 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-@Import(RequestService.class)
+@Import({RequestService.class, FolioCounterService.class})
 @TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class RequestStatusConcurrencyTest {
 
@@ -59,6 +60,7 @@ class RequestStatusConcurrencyTest {
     void dosIntentosDelMismoTramiteSoloPersistenYPublicanUnaTransicion(
             RequestStatus from, RequestStatus target, String type) throws Exception {
         MunicipalRequest initial = new MunicipalRequest("t", "d", "bache", "dir", "vecino");
+        initial.assignFolio(TestFolios.unique());
         initial.setStatus(from);
         MunicipalRequest created = repository.saveAndFlush(initial);
         String id = created.getId();
@@ -95,7 +97,7 @@ class RequestStatusConcurrencyTest {
             assertEquals(target, repository.findById(id).orElseThrow().getStatus());
             // Son llamadas al publicador simulado, no recepciones verificadas en un broker.
             ArgumentCaptor<UUID> trace = ArgumentCaptor.forClass(UUID.class);
-            RequestEventPayload payload = new RequestEventPayload(id, "bache", null, "dir", null);
+            RequestEventPayload payload = new RequestEventPayload(id, created.getFolio(), "bache", null, "dir", null);
             verify(publisher).publish(eq(type), eq(id), eq(payload), trace.capture());
             if (target == RequestStatus.EN_TERRENO || target == RequestStatus.RESUELTO) {
                 verify(publisher).publish(eq(target == RequestStatus.EN_TERRENO ? "email.visit" : "certificate.resolved"),

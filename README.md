@@ -75,6 +75,7 @@ Contrato alineado con el formulario del Vecino (tipo + descripción + dirección
 |-------|--------|
 | `description`, `procedureType`, `address` | Body del POST |
 | `title` | **Autogenerado** (`{etiqueta} — {dirección}`). No va en el body |
+| `folio` | **Autogenerado** en el alta: `BD-AAAA-NNNNNN`, único y que no cambia. Ver [Folio](#folio-ep3-28) |
 | `solicitanteId` | Header `X-User-Id` (oid/sub del JWT vía BFF). **Nunca** del body |
 | `solicitanteNombre` | Header `X-User-Name` solo en el POST, codificado en URL (UTF-8) por el BFF. Se decodifica y se trunca a 200, igual que el `actor_name` del historial. Si el header viene vacío, mal codificado o con caracteres de control, queda el `solicitanteId`; si tampoco hay id, `Sin nombre`. GET y PUT de estado no lo recalculan |
 | `solicitanteEmail` | Header `X-User-Email` solo en el POST. Se guarda tal cual, recortado. Si no viene o viene en blanco, queda `null` (también los trámites anteriores a esta columna). GET y PUT de estado no lo recalculan. EP2-20 del BFF es quien debe reenviar ese header |
@@ -126,7 +127,7 @@ Si la tabla ya tenía filas viejas sin `address`/`solicitante_id`, vaciala una v
 Colección Postman: `postman/EP1-14-requests.postman_collection.json`.
 
 Para evidenciar en Oracle:  
-`SELECT id, title, address, solicitante_id, status, created_at FROM municipal_requests ORDER BY created_at DESC;`
+`SELECT id, folio, title, address, solicitante_id, status, created_at FROM municipal_requests ORDER BY created_at DESC;`
 
 ### Imagen de respaldo opcional
 
@@ -147,6 +148,41 @@ docker build -t bd-requests .
 Health: `http://localhost:8081/actuator/health`  
 El Compose de infraestructura suministra las variables Rabbit y Oracle y monta el wallet; su plantilla está versionada.
 
+## Folio (EP3-28)
+
+Cada trámite recibe en el alta un número de seguimiento `BD-AAAA-NNNNNN`, por ejemplo `BD-2026-000123`
+(contrato EP3-05 en `barriodigital-infra/docs/decisiones.md`). Va en las respuestas de la API y en el payload
+de RabbitMQ.
+
+- `AAAA` es el año de `created_at` en `America/Santiago`: un alta del 31-dic a las 23:30 en Chile es de ese año.
+- `NNNNNN` es un correlativo sin huecos que reinicia cada año. Sale de la tabla `folio_counter` (una fila por año
+  con el último número entregado), no de una secuencia de Oracle. Un alta revertida devuelve su número.
+- El instante del alta se lee una sola vez del `Clock`: de él salen `created_at`, el año del folio y la marca
+  `CREADO` del historial.
+- `RequestCreationOrchestrationService` es el único punto de entrada de las dos altas. Crea la fila del año en
+  una transacción corta, antes del alta, y el alta toma el número con la fila bloqueada, justo antes de guardar.
+  Las altas simultáneas se procesan en fila.
+- La columna es `NOT NULL`, única (`uk_municipal_requests_folio`) y no se actualiza. Más de 999.999 trámites en un
+  año responde 500: es un límite por diseño.
+
+### Trámites existentes
+
+Una base que ya tiene trámites necesita, **una sola vez**, `src/main/resources/db/folio-existing-requests.sql`.
+`ddl-auto: update` no puede agregar el `NOT NULL` sobre filas existentes, por eso no basta con arrancar la versión
+nueva. Orden de la ventana de mantenimiento:
+
+1. **Detener requests.** La versión anterior no conoce `folio`: si sigue creando trámites, el alta falla o deja
+   filas sin folio.
+2. **Correr el script** en Oracle, con SQLcl, SQL*Plus o el worksheet de SQL Developer. Se detiene ante el primer
+   error. Empieza con una vista previa de solo lectura, que muestra el folio que recibirá cada trámite y se puede
+   correr sola antes. Después agrega la columna, numera por año en orden de `created_at` (con `id` como desempate), aplica
+   `NOT NULL` y `UNIQUE` e inicializa `folio_counter` con el máximo de cada año, el año en curso y el siguiente.
+3. **Revisar la comprobación final** del script: `sin_folio` debe ser 0.
+4. **Desplegar EP3-28 y levantar requests.**
+
+Solo una base nueva, donde `municipal_requests` todavía no existe, se salta el script: Hibernate crea la tabla con
+`folio` `NOT NULL`, el constraint y `folio_counter`. Si la tabla ya existe, aunque esté vacía, se corre el script.
+
 ## Concurrencia de estado (EP1.5-18)
 
 EP1.5-18 protege `changeStatus()` con `findByIdForUpdate()` y bloqueo pesimista de escritura por trámite. La misma transacción lee, valida la transición, modifica y persiste, para todas las transiciones. Dos admisiones del mismo trámite no validan simultáneamente INGRESADO: una completa y la otra recibe el 409 existente al observar ADMITIDO. También se serializan admisión y rechazo; trámites distintos no usan un bloqueo global. Los errores de bloqueo/persistencia no se convierten en conflictos de negocio.
@@ -163,7 +199,7 @@ routing key `crew.ticket`, y `email.visit` en el topic configurado, con routing 
 Las demás transiciones y las lecturas no publican eventos. Un estado repetido conserva el 409.
 
 La publicación es asíncrona y posterior al commit, también cuando existe una transacción exterior. Rollback,
-fallo de commit o transición rechazada no producen eventos. El payload incluye `requestId`, `procedureType`,
+fallo de commit o transición rechazada no producen eventos. El payload incluye `requestId`, `folio`, `procedureType`,
 `procedureLabel`, `address` y `solicitanteEmail`, usando los snapshots persistidos. Un correo null se publica
 igualmente y Notify lo rechaza hacia la DLQ de email, sin impedir el procesamiento del ticket de cuadrilla
 o del certificado. Los certificados no requieren correo.

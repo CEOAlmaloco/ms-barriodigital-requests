@@ -1,5 +1,6 @@
 package cl.duoc.barriodigital.requests.service;
 
+import cl.duoc.barriodigital.requests.TestFolios;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.messaging.EventPublisher;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
@@ -23,7 +24,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /** Filtro por días civiles de Chile contra la consulta real en H2; no valida el entorno Oracle desplegado. */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
-@Import(RequestService.class)
+@Import({RequestService.class, FolioCounterService.class})
 @TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class RequestListCivilDayTest {
 
@@ -73,6 +74,7 @@ class RequestListCivilDayTest {
     private void save(String title, String createdAt) {
         MunicipalRequest request = new MunicipalRequest(title, "d", "bache", "dir", "vecino-1", "Vecino");
         ReflectionTestUtils.setField(request, "createdAt", Instant.parse(createdAt));
+        request.assignFolio(TestFolios.unique());
         repository.saveAndFlush(request);
     }
 

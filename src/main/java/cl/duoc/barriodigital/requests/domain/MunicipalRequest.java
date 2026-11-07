@@ -8,8 +8,10 @@ import jakarta.persistence.Id;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -17,12 +19,23 @@ import java.util.UUID;
  * Guarda descripción, tipo, dirección, solicitante y estado. Al crearse queda en INGRESADO.
  */
 @Entity
-@Table(name = "municipal_requests")
+// El nombre del constraint calza con db/folio-existing-requests.sql. Con ddl-auto update, Hibernate lo recrea por nombre.
+@Table(
+        name = "municipal_requests",
+        uniqueConstraints = @UniqueConstraint(name = "uk_municipal_requests_folio", columnNames = "folio")
+)
 public class MunicipalRequest {
 
     @Id
     @Column(length = 36, nullable = false)
     private String id;
+
+    /**
+     * Número de seguimiento BD-AAAA-NNNNNN (contrato EP3-05). Se asigna una vez en el alta y no cambia.
+     * Los trámites anteriores lo reciben con db/folio-existing-requests.sql.
+     */
+    @Column(name = "folio", nullable = false, updatable = false, length = Folio.LENGTH)
+    private String folio;
 
     /** Título generado con la etiqueta del tipo y la dirección. No lo envía el formulario. */
     @Column(nullable = false, length = 200)
@@ -148,7 +161,7 @@ public class MunicipalRequest {
         this(title, description, procedureType, address, solicitanteId, solicitanteNombre, solicitanteEmail, null);
     }
 
-    /** Crea el trámite completo y lo deja en INGRESADO, con la fecha de ahora. */
+    /** Crea el trámite completo con la fecha de ahora. El alta usa el constructor que recibe el instante. */
     public MunicipalRequest(
             String title,
             String description,
@@ -158,6 +171,25 @@ public class MunicipalRequest {
             String solicitanteNombre,
             String solicitanteEmail,
             String procedureLabel
+    ) {
+        this(title, description, procedureType, address, solicitanteId, solicitanteNombre, solicitanteEmail,
+                procedureLabel, Instant.now());
+    }
+
+    /**
+     * Crea el trámite en INGRESADO con el instante del alta, leído una sola vez del Clock.
+     * Del mismo instante salen created_at, el año del folio y la marca CREADO del historial (EP3-05, sección 1.3).
+     */
+    public MunicipalRequest(
+            String title,
+            String description,
+            String procedureType,
+            String address,
+            String solicitanteId,
+            String solicitanteNombre,
+            String solicitanteEmail,
+            String procedureLabel,
+            Instant createdAt
     ) {
         this.id = UUID.randomUUID().toString();
         this.title = title;
@@ -169,22 +201,25 @@ public class MunicipalRequest {
         this.solicitanteNombre = solicitanteNombre;
         this.solicitanteEmail = solicitanteEmail;
         this.status = RequestStatus.INGRESADO;
-        Instant now = Instant.now();
-        this.createdAt = now;
-        this.updatedAt = now;
+        this.createdAt = Objects.requireNonNull(createdAt, "createdAt");
+        this.updatedAt = createdAt;
     }
 
-    /** Antes de guardar por primera vez, completa el id, las fechas y el estado si faltan. */
+    /**
+     * Antes de guardar por primera vez, completa el id, las fechas y el estado si faltan.
+     * Nunca pisa created_at ni updated_at ya puestos: el año del folio sale de created_at.
+     */
     @PrePersist
     void onCreate() {
         if (id == null) {
             id = UUID.randomUUID().toString();
         }
-        Instant now = Instant.now();
         if (createdAt == null) {
-            createdAt = now;
+            createdAt = Instant.now();
         }
-        updatedAt = now;
+        if (updatedAt == null) {
+            updatedAt = createdAt;
+        }
         if (status == null) {
             status = RequestStatus.INGRESADO;
         }
@@ -199,6 +234,19 @@ public class MunicipalRequest {
     /** Identificador del trámite. */
     public String getId() {
         return id;
+    }
+
+    /** Número de seguimiento BD-AAAA-NNNNNN. */
+    public String getFolio() {
+        return folio;
+    }
+
+    /** Asigna el folio en el alta. Una segunda asignación es un error de programación. */
+    public void assignFolio(String folio) {
+        if (this.folio != null) {
+            throw new IllegalStateException("El folio del tramite ya fue asignado");
+        }
+        this.folio = Objects.requireNonNull(folio, "folio");
     }
 
     /** Título armado con el tipo y la dirección. */

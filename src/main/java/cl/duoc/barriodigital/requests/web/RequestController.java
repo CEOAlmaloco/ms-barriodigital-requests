@@ -7,6 +7,7 @@ import cl.duoc.barriodigital.requests.domain.RequestTransitions;
 import cl.duoc.barriodigital.requests.service.ImageAttachmentSanitizer;
 import cl.duoc.barriodigital.requests.service.RequestActivityService;
 import cl.duoc.barriodigital.requests.service.RequestAttachmentContent;
+import cl.duoc.barriodigital.requests.service.RequestCreationOrchestrationService;
 import cl.duoc.barriodigital.requests.service.RequestService;
 import cl.duoc.barriodigital.requests.web.dto.ActividadView;
 import cl.duoc.barriodigital.requests.web.dto.ChangeStatusDto;
@@ -45,16 +46,19 @@ import java.util.Map;
 public class RequestController {
 
     private final RequestService requestService;
+    private final RequestCreationOrchestrationService creation;
     private final RequestActivityService activityService;
     private final ImageAttachmentSanitizer imageSanitizer;
 
-    /** Recibe el servicio del trámite y el del historial. */
+    /** Recibe el servicio del trámite, el orquestador del alta, el del historial y el saneador de imágenes. */
     public RequestController(
             RequestService requestService,
+            RequestCreationOrchestrationService creation,
             RequestActivityService activityService,
             ImageAttachmentSanitizer imageSanitizer
     ) {
         this.requestService = requestService;
+        this.creation = creation;
         this.activityService = activityService;
         this.imageSanitizer = imageSanitizer;
     }
@@ -69,9 +73,10 @@ public class RequestController {
             @RequestHeader(value = CallerContext.HEADER_USER_EMAIL, required = false) String userEmail,
             @RequestHeader(value = CallerContext.HEADER_PROCEDURE_LABEL, required = false) String procedureLabel
     ) {
-        MunicipalRequest created = requestService.create(
+        MunicipalRequest created = creation.create(
                 body,
-                new CallerContext(userId, roles, userName, userEmail, procedureLabel)
+                new CallerContext(userId, roles, userName, userEmail, procedureLabel),
+                null
         );
         return ResponseEntity.status(HttpStatus.CREATED).body(created);
     }
@@ -88,7 +93,7 @@ public class RequestController {
             @RequestHeader(value = CallerContext.HEADER_PROCEDURE_LABEL, required = false) String procedureLabel
     ) {
         var image = attachment == null ? null : imageSanitizer.sanitize(attachment);
-        MunicipalRequest created = requestService.create(
+        MunicipalRequest created = creation.create(
                 body,
                 new CallerContext(userId, roles, userName, userEmail, procedureLabel),
                 image
