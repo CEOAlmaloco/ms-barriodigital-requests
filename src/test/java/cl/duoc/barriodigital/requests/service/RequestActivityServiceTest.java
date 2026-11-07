@@ -12,6 +12,10 @@ import cl.duoc.barriodigital.requests.web.CallerContext;
 import cl.duoc.barriodigital.requests.web.dto.ActividadView;
 import cl.duoc.barriodigital.requests.web.dto.RegisterGestionDto;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
+import org.mockito.ArgumentCaptor;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
@@ -23,7 +27,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class RequestActivityServiceTest {
@@ -31,6 +37,8 @@ class RequestActivityServiceTest {
     private final MunicipalRequestRepository requests = mock(MunicipalRequestRepository.class);
     private final RequestActivityRepository activity = mock(RequestActivityRepository.class);
     private final RequestActivityService service = new RequestActivityService(requests, activity);
+
+    private static final CallerContext FUNCIONARIO = new CallerContext("func", "Funcionario", "Ana%20Mar%C3%ADa");
 
     @Test
     void elVecinoNoVeLaGestionNiElConteoDeLlamadas() {
@@ -96,6 +104,74 @@ class RequestActivityServiceTest {
                 new RegisterGestionDto(ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, "  ", null),
                 new CallerContext("func", "Funcionario", "Ana"));
         verify(activity).save(any(RequestActivity.class));
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = RequestStatus.class, names = {"RESUELTO", "RECHAZADO"})
+    void unaGestionEnUnTramiteCerradoResponde409SinGuardar(RequestStatus closed) {
+        MunicipalRequest request = request();
+        request.setStatus(closed);
+        when(requests.findByIdForUpdate(request.getId())).thenReturn(Optional.of(request));
+
+        ResponseStatusException error = assertThrows(ResponseStatusException.class, () -> service.registerGestion(
+                request.getId(),
+                new RegisterGestionDto(ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, null, null),
+                FUNCIONARIO));
+
+        assertEquals(409, error.getStatusCode().value());
+        assertEquals("No se puede registrar una gestion en un tramite cerrado", error.getReason());
+        verify(activity, never()).save(any(RequestActivity.class));
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = RequestStatus.class, names = {"INGRESADO", "ADMITIDO", "EN_GESTION", "EN_TERRENO"})
+    void unaGestionEnUnTramiteAbiertoSeGuardaConElNombreDecodificado(RequestStatus open) {
+        MunicipalRequest request = request();
+        request.setStatus(open);
+        when(requests.findByIdForUpdate(request.getId())).thenReturn(Optional.of(request));
+        Instant next = Instant.now().plusSeconds(3600);
+
+        service.registerGestion(
+                request.getId(),
+                new RegisterGestionDto(ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, null, next),
+                FUNCIONARIO);
+
+        ArgumentCaptor<RequestActivity> saved = ArgumentCaptor.forClass(RequestActivity.class);
+        verify(activity).save(saved.capture());
+        assertEquals("Ana María", saved.getValue().getActorName());
+        assertEquals(next, saved.getValue().getNextAttemptAt());
+    }
+
+    @ParameterizedTest
+    @ValueSource(longs = {-3600, 0})
+    void unProximoIntentoQueNoEsFuturoResponde400AntesDeBuscarElTramite(long offsetSeconds) {
+        Instant notFuture = Instant.now().plusSeconds(offsetSeconds);
+
+        ResponseStatusException error = assertThrows(ResponseStatusException.class, () -> service.registerGestion(
+                "no-existe",
+                new RegisterGestionDto(ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, null, notFuture),
+                FUNCIONARIO));
+
+        assertEquals(400, error.getStatusCode().value());
+        assertEquals("nextAttemptAt debe ser una fecha futura", error.getReason());
+        verifyNoInteractions(requests, activity);
+    }
+
+    @Test
+    void elRolSeRevisaAntesQueLaFechaYLaFechaAntesQueElTramite() {
+        RegisterGestionDto past = new RegisterGestionDto(
+                ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, null, Instant.now().minusSeconds(60));
+        RegisterGestionDto future = new RegisterGestionDto(
+                ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, null, Instant.now().plusSeconds(3600));
+        when(requests.findByIdForUpdate("no-existe")).thenReturn(Optional.empty());
+
+        ResponseStatusException vecino = assertThrows(ResponseStatusException.class,
+                () -> service.registerGestion("no-existe", past, new CallerContext("vecino-1", "Vecino")));
+        ResponseStatusException missing = assertThrows(ResponseStatusException.class,
+                () -> service.registerGestion("no-existe", future, FUNCIONARIO));
+
+        assertEquals(403, vecino.getStatusCode().value());
+        assertEquals(404, missing.getStatusCode().value());
     }
 
     @Test

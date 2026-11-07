@@ -76,7 +76,7 @@ Contrato alineado con el formulario del Vecino (tipo + descripción + dirección
 | `description`, `procedureType`, `address` | Body del POST |
 | `title` | **Autogenerado** (`{etiqueta} — {dirección}`). No va en el body |
 | `solicitanteId` | Header `X-User-Id` (oid/sub del JWT vía BFF). **Nunca** del body |
-| `solicitanteNombre` | Header `X-User-Name` solo en el POST. Se guarda en la fila. Si el header viene vacío, queda el `solicitanteId`; si tampoco hay id, `Sin nombre`. GET y PUT de estado no lo recalculan |
+| `solicitanteNombre` | Header `X-User-Name` solo en el POST, codificado en URL (UTF-8) por el BFF. Se decodifica y se trunca a 200, igual que el `actor_name` del historial. Si el header viene vacío, mal codificado o con caracteres de control, queda el `solicitanteId`; si tampoco hay id, `Sin nombre`. GET y PUT de estado no lo recalculan |
 | `solicitanteEmail` | Header `X-User-Email` solo en el POST. Se guarda tal cual, recortado. Si no viene o viene en blanco, queda `null` (también los trámites anteriores a esta columna). GET y PUT de estado no lo recalculan. EP2-20 del BFF es quien debe reenviar ese header |
 | `procedureLabel` | Header `X-Procedure-Label` solo en el POST, codificado en URL (UTF-8). El BFF lo arma con el `label` de catalog. Se decodifica, se recorta y se trunca a 120. Si no viene, viene en blanco o no se puede decodificar, queda `null` sin error (también los trámites anteriores a esta columna). GET y PUT de estado no lo recalculan |
 | Roles | Header `X-User-Roles` (ej. `Vecino` o `Funcionario`) |
@@ -88,7 +88,7 @@ Catálogo (**deprecado**): `GET /api/requests/meta/procedure-types` sigue respon
 Transiciones válidas: `GET /api/requests/meta/transitions`  
 (mapa estado → siguientes; `RESUELTO` y `RECHAZADO` vienen con lista vacía)
 
-Filtros de listado: `status`, `from`, `to` como **fecha** `yyyy-MM-dd` (sirve para mat-datepicker).  
+Filtros de listado: `status`, `from`, `to` como **fecha** `yyyy-MM-dd` (sirve para mat-datepicker). Son días civiles en `America/Santiago` y los dos se incluyen completos: `to=2026-11-06` incluye un trámite creado ese día a las 22:00 en Chile, aunque en UTC ya sea el 7.  
 Vecino: el servidor fuerza `solicitanteId = X-User-Id`. Funcionario/Admin/Auditor: ven todos.
 
 ```powershell
@@ -97,7 +97,7 @@ curl -X POST http://localhost:8081/api/requests `
   -H "Content-Type: application/json" `
   -H "X-User-Id: oid-de-prueba" `
   -H "X-User-Roles: Vecino" `
-  -H "X-User-Name: Alex Ampuero" `
+  -H "X-User-Name: Alex%20Ampuero" `
   -H "X-User-Email: vecino@example.com" `
   -H "X-Procedure-Label: Bache%20en%20calle" `
   -d "{\"description\":\"Hueco frente al 123\",\"procedureType\":\"bache\",\"address\":\"Plaza Los Heroes\"}"

@@ -53,17 +53,31 @@ public class RequestActivityService {
         this.activity = activity;
     }
 
-    /** Registra una gestión interna. Si el guardado falla, la transacción no confirma nada. */
+    /**
+     * Registra una gestión interna. Si el guardado falla, la transacción no confirma nada.
+     * Responde en el orden del contrato EP3-04: 403 por rol, 400 si nextAttemptAt no es futura,
+     * 404 si el trámite no existe y 409 si está cerrado. El estado se revisa con la fila bloqueada.
+     */
     @Transactional
     public ActividadView registerGestion(String requestId, RegisterGestionDto body, CallerContext caller) {
         requireUser(caller);
         if (!caller.isFuncionario()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo un Funcionario puede registrar una gestión");
         }
+        if (body.nextAttemptAt() != null && !body.nextAttemptAt().isAfter(Instant.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "nextAttemptAt debe ser una fecha futura");
+        }
         MunicipalRequest request = locked(requestId);
+        if (TERMINAL.contains(request.getStatus())) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "No se puede registrar una gestion en un tramite cerrado"
+            );
+        }
         String note = body.note() == null ? null : body.note().trim();
         activity.save(RequestActivity.gestion(
                 request.getId(),
+                // La hora se toma con la fila ya bloqueada, para que la línea de tiempo respete el orden real.
                 Instant.now(),
                 caller.userId().trim(),
                 RequestService.snapshotName(caller.userName(), caller.userId()),

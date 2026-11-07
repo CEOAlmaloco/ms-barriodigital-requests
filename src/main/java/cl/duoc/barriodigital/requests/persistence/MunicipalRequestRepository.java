@@ -23,19 +23,22 @@ public interface MunicipalRequestRepository extends JpaRepository<MunicipalReque
     @Query("select r from MunicipalRequest r where r.id = :id")
     Optional<MunicipalRequest> findByIdForUpdate(@Param("id") String id);
 
-    /** Lista trámites. Un filtro null no se aplica. Los más recientes van primero. */
+    /**
+     * Lista trámites. Un filtro null no se aplica. Los más recientes van primero.
+     * {@code from} se incluye y {@code before} no, para cubrir días completos sin perder fracciones de segundo.
+     */
     @Query("""
             SELECT r FROM MunicipalRequest r
             WHERE (:status IS NULL OR r.status = :status)
               AND (:from IS NULL OR r.createdAt >= :from)
-              AND (:to IS NULL OR r.createdAt <= :to)
+              AND (:before IS NULL OR r.createdAt < :before)
               AND (:solicitanteId IS NULL OR r.solicitanteId = :solicitanteId)
             ORDER BY r.createdAt DESC
             """)
     List<MunicipalRequest> search(
             @Param("status") RequestStatus status,
             @Param("from") Instant from,
-            @Param("to") Instant to,
+            @Param("before") Instant before,
             @Param("solicitanteId") String solicitanteId
     );
 }
