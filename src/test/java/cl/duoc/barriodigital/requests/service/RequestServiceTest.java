@@ -45,6 +45,8 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
@@ -68,14 +70,31 @@ class RequestServiceTest {
     @Mock
     private EventPublisher publisher;
 
+    @Mock
+    private FolioCounterService folios;
+
     @InjectMocks
     private RequestService requestService;
 
     // Solo inspecciona el registro y el snapshot. Las garantías de commit se prueban con JPA/H2.
+    /** Instante del alta que pasaría el orquestador. */
+    private static final Instant NOW = Instant.parse("2026-11-07T15:00:00Z");
+
     @BeforeEach
     void synchronizationForUnitTests() {
         TransactionSynchronizationManager.setActualTransactionActive(true);
         TransactionSynchronizationManager.initSynchronization();
+        lenient().when(folios.next(anyInt())).thenReturn("BD-2026-000001");
+    }
+
+    /** Alta sin imagen con el instante fijo, como la llama el orquestador. */
+    private MunicipalRequest create(CreateRequestDto body, CallerContext caller) {
+        return requestService.create(body, caller, null, NOW);
+    }
+
+    /** Alta con imagen con el instante fijo, como la llama el orquestador. */
+    private MunicipalRequest create(CreateRequestDto body, CallerContext caller, ImageAttachmentSanitizer.SanitizedImage image) {
+        return requestService.create(body, caller, image, NOW);
     }
 
     @AfterEach
@@ -92,7 +111,7 @@ class RequestServiceTest {
         stored.setStatus(from);
         when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
         when(repository.save(stored)).thenReturn(stored);
-        RequestEventPayload expected = new RequestEventPayload(stored.getId(), "nuevo_tipo", "Etiqueta original",
+        RequestEventPayload expected = new RequestEventPayload(stored.getId(), stored.getFolio(), "nuevo_tipo", "Etiqueta original",
                 "direccion original", "vecino@example.com");
 
         requestService.changeStatus("id", target, null,
@@ -125,10 +144,10 @@ class RequestServiceTest {
         TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
         ArgumentCaptor<UUID> trace = ArgumentCaptor.forClass(UUID.class);
         verify(publisher).publish(eq(type), eq(stored.getId()),
-                eq(new RequestEventPayload(stored.getId(), "bache", null, "dir", null)), trace.capture());
+                eq(new RequestEventPayload(stored.getId(), stored.getFolio(), "bache", null, "dir", null)), trace.capture());
         if (from == RequestStatus.EN_GESTION || from == RequestStatus.EN_TERRENO) {
             verify(publisher).publish(eq(from == RequestStatus.EN_GESTION ? "email.visit" : "certificate.resolved"), eq(stored.getId()),
-                    eq(new RequestEventPayload(stored.getId(), "bache", null, "dir", null)), eq(trace.getValue()));
+                    eq(new RequestEventPayload(stored.getId(), stored.getFolio(), "bache", null, "dir", null)), eq(trace.getValue()));
         }
         verifyNoMoreInteractions(publisher);
     }
@@ -196,9 +215,9 @@ class RequestServiceTest {
                 "vecino", "Vecino", nullSnapshots ? null : "guardado@example.com",
                 nullSnapshots ? null : "Etiqueta guardada");
         when(repository.save(any(MunicipalRequest.class))).thenReturn(saved);
-        var expected = new RequestEventPayload(saved.getId(), "tipo_guardado", saved.getProcedureLabel(),
+        var expected = new RequestEventPayload(saved.getId(), saved.getFolio(), "tipo_guardado", saved.getProcedureLabel(),
                 "direccion guardada", saved.getSolicitanteEmail());
-        MunicipalRequest returned = requestService.create(new CreateRequestDto("d", "bache", "otra direccion"),
+        MunicipalRequest returned = create(new CreateRequestDto("d", "bache", "otra direccion"),
                 new CallerContext("vecino", "Vecino", "Vecino", "otro@example.com", "Otra etiqueta"));
         assertSame(saved, returned);
         assertEquals(1, TransactionSynchronizationManager.getSynchronizations().size());
@@ -215,7 +234,7 @@ class RequestServiceTest {
     void altaSinTransaccionNoPublicaInmediatamente() {
         TransactionSynchronizationManager.clear();
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        assertThrows(IllegalStateException.class, () -> requestService.create(
+        assertThrows(IllegalStateException.class, () -> create(
                 new CreateRequestDto("d", "bache", "dir"), new CallerContext("vecino", "Vecino")));
         verifyNoInteractions(publisher);
     }
@@ -225,7 +244,7 @@ class RequestServiceTest {
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         CallerContext vecino = new CallerContext("oid-vecino-1", "Vecino");
-        MunicipalRequest created = requestService.create(
+        MunicipalRequest created = create(
                 new CreateRequestDto("Hueco frente al 123", "bache", "Plaza Los Heroes"),
                 vecino
         );
@@ -248,7 +267,7 @@ class RequestServiceTest {
     void createGuardaSectorYPuntoDentroDeLaComuna() {
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        MunicipalRequest created = requestService.create(
+        MunicipalRequest created = create(
                 new CreateRequestDto(
                         "Hueco",
                         "bache",
@@ -271,7 +290,7 @@ class RequestServiceTest {
 
     @Test
     void createRechazaUnPuntoFueraDeLaComuna() {
-        ResponseStatusException error = assertThrows(ResponseStatusException.class, () -> requestService.create(
+        ResponseStatusException error = assertThrows(ResponseStatusException.class, () -> create(
                 new CreateRequestDto("Hueco", "bache", "Otra ciudad", null, null, -33.45, -70.66, "EXACTO"),
                 new CallerContext("oid-vecino-1", "Vecino")
         ));
@@ -284,7 +303,7 @@ class RequestServiceTest {
     void createAceptaUnCodigoNuevoBienFormadoYTitulaConElCodigoCrudo() {
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        MunicipalRequest created = requestService.create(
+        MunicipalRequest created = create(
                 new CreateRequestDto("Semaforo apagado", " Semaforo ", "Calle 1"),
                 new CallerContext("oid-1", "Vecino")
         );
@@ -297,7 +316,7 @@ class RequestServiceTest {
     void createTitulaAlumbradoConLaEtiquetaConTilde() {
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        MunicipalRequest created = requestService.create(
+        MunicipalRequest created = create(
                 new CreateRequestDto("Poste sin luz", "alumbrado", "Calle 2"),
                 new CallerContext("oid-1", "Vecino")
         );
@@ -309,7 +328,7 @@ class RequestServiceTest {
     void createGuardaElNombreDelHeaderYNoElDelBody() {
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        MunicipalRequest created = requestService.create(
+        MunicipalRequest created = create(
                 new CreateRequestDto("Hueco", "bache", "Calle 1"),
                 new CallerContext("oid-1", "Vecino", "  Alex Ampuero  ")
         );
@@ -322,7 +341,7 @@ class RequestServiceTest {
     void createGuardaElEmailDelHeader() {
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        MunicipalRequest created = requestService.create(
+        MunicipalRequest created = create(
                 new CreateRequestDto("Hueco", "bache", "Calle 1"),
                 new CallerContext("oid-1", "Vecino", "Alex Ampuero", "  vecino@example.com  ")
         );
@@ -335,11 +354,11 @@ class RequestServiceTest {
     void createSinHeaderDeEmailDejaNull() {
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        MunicipalRequest sinHeader = requestService.create(
+        MunicipalRequest sinHeader = create(
                 new CreateRequestDto("Hueco", "bache", "Calle 1"),
                 new CallerContext("oid-1", "Vecino", "Alex Ampuero")
         );
-        MunicipalRequest enBlanco = requestService.create(
+        MunicipalRequest enBlanco = create(
                 new CreateRequestDto("Hueco", "bache", "Calle 1"),
                 new CallerContext("oid-1", "Vecino", "Alex Ampuero", "   ")
         );
@@ -353,7 +372,7 @@ class RequestServiceTest {
     void createGuardaElLabelDecodificadoDelHeaderYTitulaConEl() {
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        MunicipalRequest created = requestService.create(
+        MunicipalRequest created = create(
                 new CreateRequestDto("Poste sin luz", "alumbrado", "Calle 2"),
                 new CallerContext("oid-1", "Vecino", "Alex Ampuero", null, "Alumbrado%20p%C3%BAblico%20nocturno")
         );
@@ -370,7 +389,7 @@ class RequestServiceTest {
     void createDecodificaElMasComoEspacio() {
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        MunicipalRequest created = requestService.create(
+        MunicipalRequest created = create(
                 new CreateRequestDto("Hueco", "bache", "Calle 1"),
                 new CallerContext("oid-1", "Vecino", "Alex Ampuero", null, "Bache+grave")
         );
@@ -383,11 +402,11 @@ class RequestServiceTest {
     void createSinHeaderDeLabelDejaNullYTitulaComoAntes() {
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        MunicipalRequest sinHeader = requestService.create(
+        MunicipalRequest sinHeader = create(
                 new CreateRequestDto("Poste sin luz", "alumbrado", "Calle 2"),
                 new CallerContext("oid-1", "Vecino", "Alex Ampuero")
         );
-        MunicipalRequest enBlanco = requestService.create(
+        MunicipalRequest enBlanco = create(
                 new CreateRequestDto("Poste sin luz", "alumbrado", "Calle 2"),
                 new CallerContext("oid-1", "Vecino", "Alex Ampuero", null, "   ")
         );
@@ -402,11 +421,11 @@ class RequestServiceTest {
     void createConHeaderDeLabelInvalidoDejaNullSinError() {
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        MunicipalRequest incompleto = requestService.create(
+        MunicipalRequest incompleto = create(
                 new CreateRequestDto("Hueco", "bache", "Calle 1"),
                 new CallerContext("oid-1", "Vecino", "Alex Ampuero", null, "Bache%E0%A4%A")
         );
-        MunicipalRequest noHex = requestService.create(
+        MunicipalRequest noHex = create(
                 new CreateRequestDto("Hueco", "bache", "Calle 1"),
                 new CallerContext("oid-1", "Vecino", "Alex Ampuero", null, "Bache%zz")
         );
@@ -473,6 +492,34 @@ class RequestServiceTest {
     }
 
     @Test
+    void createAsignaElFolioDelAnioDeChileConElInstanteRecibido() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        Instant newYearEve = Instant.parse("2027-01-01T02:30:00Z");
+        when(folios.next(2026)).thenReturn("BD-2026-000042");
+
+        MunicipalRequest created = requestService.create(
+                new CreateRequestDto("Hueco", "bache", "Calle 1"), new CallerContext("oid-1", "Vecino"), null, newYearEve);
+
+        ArgumentCaptor<RequestActivity> mark = ArgumentCaptor.forClass(RequestActivity.class);
+        verify(activity).save(mark.capture());
+        assertEquals("BD-2026-000042", created.getFolio());
+        assertEquals(newYearEve, created.getCreatedAt());
+        assertEquals(newYearEve, mark.getValue().getOccurredAt());
+    }
+
+    @Test
+    void unAltaInvalidaNoTomaNumeroDeFolio() {
+        assertThrows(ResponseStatusException.class, () -> create(
+                new CreateRequestDto("x", "Tipo Invalido", "Calle 1"), new CallerContext("oid-1", "Vecino")));
+        assertThrows(ResponseStatusException.class, () -> create(
+                new CreateRequestDto("Hueco", "bache", "Otra ciudad", null, null, -33.45, -70.66, "EXACTO"),
+                new CallerContext("oid-1", "Vecino")));
+
+        verify(folios, never()).next(anyInt());
+        verify(repository, never()).save(any());
+    }
+
+    @Test
     void sinHeaderDeNombreQuedaElIdYSinNingunoQuedaSinNombre() {
         assertEquals("oid-1", RequestService.snapshotName("   ", "oid-1"));
         assertEquals("Sin nombre", RequestService.snapshotName(null, "  "));
@@ -482,7 +529,7 @@ class RequestServiceTest {
     void createGuardaElNombreDecodificadoEnElTramiteYEnElHistorial() {
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        MunicipalRequest created = requestService.create(
+        MunicipalRequest created = create(
                 new CreateRequestDto("Hueco", "bache", "Calle 1"),
                 new CallerContext("oid-1", "Vecino", "Ana%20Mar%C3%ADa%20Mu%C3%B1oz")
         );
@@ -596,7 +643,7 @@ class RequestServiceTest {
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
         String code = "a".repeat(40);
 
-        MunicipalRequest created = requestService.create(
+        MunicipalRequest created = create(
                 new CreateRequestDto("x", code, "Calle 1"),
                 new CallerContext("oid-1", "Vecino")
         );
@@ -756,7 +803,7 @@ class RequestServiceTest {
 
     private void assertBadProcedureType(String procedureType, CallerContext caller) {
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
-                requestService.create(new CreateRequestDto("x", procedureType, "Calle 1"), caller));
+                create(new CreateRequestDto("x", procedureType, "Calle 1"), caller));
         assertEquals(400, ex.getStatusCode().value());
         assertEquals(
                 "procedureType invalido. Debe ser minusculas, numeros, guion o guion bajo (maximo 40 caracteres)",

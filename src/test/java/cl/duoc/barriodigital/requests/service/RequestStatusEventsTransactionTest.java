@@ -1,5 +1,7 @@
 package cl.duoc.barriodigital.requests.service;
 
+import cl.duoc.barriodigital.requests.TestFolios;
+import cl.duoc.barriodigital.requests.domain.Folio;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.messaging.EventPublisher;
@@ -7,6 +9,7 @@ import cl.duoc.barriodigital.requests.messaging.RequestEventPayload;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -25,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -47,7 +51,7 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-@Import(RequestService.class)
+@Import({RequestService.class, FolioCounterService.class})
 @TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class RequestStatusEventsTransactionTest {
 
@@ -58,6 +62,16 @@ class RequestStatusEventsTransactionTest {
     @MockBean EventPublisher publisher;
 
     private final CallerContext funcionario = new CallerContext("func", "Funcionario");
+
+    /** Instante fijo del alta. El orquestador no participa: estos tests prueban la transacción de RequestService. */
+    private static final Instant NOW = Instant.parse("2026-11-07T15:00:00Z");
+
+    @Autowired FolioCounterService folios;
+
+    @BeforeEach
+    void counterOfTheYear() {
+        folios.ensureYear(Folio.yearOf(NOW));
+    }
 
     @ParameterizedTest
     @CsvSource({"INGRESADO,ADMITIDO,email.admitted", "EN_TERRENO,RESUELTO,email.resolved",
@@ -201,7 +215,7 @@ class RequestStatusEventsTransactionTest {
         AtomicReference<String> id = new AtomicReference<>();
         try {
             assertThrows(RuntimeException.class, () -> new TransactionTemplate(transactions).executeWithoutResult(tx -> {
-                MunicipalRequest saved = service.create(new CreateRequestDto("alta-invalida-ep224", "bache", "dir"), funcionario);
+                MunicipalRequest saved = service.create(new CreateRequestDto("alta-invalida-ep224", "bache", "dir"), funcionario, null, NOW);
                 id.set(saved.getId());
                 verifyNoInteractions(publisher);
                 // El INSERT pendiente falla durante el flush del commit, después de retornar create.
@@ -239,7 +253,7 @@ class RequestStatusEventsTransactionTest {
 
     private MunicipalRequest createThroughService() {
         return service.create(new CreateRequestDto("d", "bache", "dir"),
-                new CallerContext("vecino", "Vecino", "Vecino", "vecino@example.com", "Etiqueta%20guardada"));
+                new CallerContext("vecino", "Vecino", "Vecino", "vecino@example.com", "Etiqueta%20guardada"), null, NOW);
     }
 
     @Test
@@ -263,12 +277,14 @@ class RequestStatusEventsTransactionTest {
     private MunicipalRequest create(RequestStatus status) {
         MunicipalRequest request = new MunicipalRequest("t", "d", "bache", "dir", "vecino", "Vecino",
                 "vecino@example.com", "Etiqueta guardada");
+        request.assignFolio(TestFolios.unique());
         request.setStatus(status);
         return repository.saveAndFlush(request);
     }
 
     private RequestEventPayload payload(MunicipalRequest request) {
-        return new RequestEventPayload(request.getId(), request.getProcedureType(), request.getProcedureLabel(),
+        return new RequestEventPayload(request.getId(), request.getFolio(), request.getProcedureType(),
+                request.getProcedureLabel(),
                 request.getAddress(), request.getSolicitanteEmail());
     }
 }

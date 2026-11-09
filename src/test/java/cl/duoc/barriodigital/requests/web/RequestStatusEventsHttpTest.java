@@ -3,6 +3,7 @@ package cl.duoc.barriodigital.requests.web;
 import ch.qos.logback.classic.Logger;
 import ch.qos.logback.classic.spi.ILoggingEvent;
 import ch.qos.logback.core.AppenderBase;
+import cl.duoc.barriodigital.requests.TestFolios;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.integration.RequestsH2Application;
@@ -12,7 +13,7 @@ import cl.duoc.barriodigital.requests.messaging.RequestEventPayload;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.persistence.RequestAttachmentRepository;
 import cl.duoc.barriodigital.requests.service.ImageAttachmentSanitizer;
-import cl.duoc.barriodigital.requests.service.RequestService;
+import cl.duoc.barriodigital.requests.service.RequestCreationOrchestrationService;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.Filter;
@@ -76,7 +77,7 @@ class RequestStatusEventsHttpTest {
     @Autowired TestRestTemplate http;
     @Autowired MunicipalRequestRepository repository;
     @Autowired RequestAttachmentRepository attachmentRepository;
-    @Autowired RequestService requestService;
+    @Autowired RequestCreationOrchestrationService creation;
     @Autowired PlatformTransactionManager transactions;
     @Autowired ObjectMapper mapper;
     @Autowired Jackson2JsonMessageConverter converter;
@@ -112,7 +113,7 @@ class RequestStatusEventsHttpTest {
                 "evidencia.png"
         );
 
-        MunicipalRequest created = requestService.create(
+        MunicipalRequest created = creation.create(
                 new CreateRequestDto("Hueco", "bache", "Calle 1"),
                 new CallerContext("oid-attachment-test", "Vecino"),
                 image
@@ -224,12 +225,13 @@ class RequestStatusEventsHttpTest {
     }
 
     @Test
-    void converterDeLaAplicacionIncluyeLosCincoCamposYNulos() throws Exception {
-        var payload = new RequestEventPayload("id", "bache", null, "dir", null);
+    void converterDeLaAplicacionIncluyeLosSeisCamposYNulos() throws Exception {
+        var payload = new RequestEventPayload("id", "BD-2026-000123", "bache", null, "dir", null);
         var message = converter.toMessage(payload, new org.springframework.amqp.core.MessageProperties());
         var json = mapper.readTree(message.getBody());
-        assertEquals(5, json.size());
+        assertEquals(6, json.size());
         assertEquals("id", json.get("requestId").textValue());
+        assertEquals("BD-2026-000123", json.get("folio").textValue());
         assertEquals("bache", json.get("procedureType").textValue());
         assertEquals("dir", json.get("address").textValue());
         assertTrue(json.get("procedureLabel").isNull());
@@ -238,6 +240,7 @@ class RequestStatusEventsHttpTest {
 
     private MunicipalRequest create(RequestStatus status) {
         MunicipalRequest request = new MunicipalRequest("t", "d", "bache", "dir", "vecino");
+        request.assignFolio(TestFolios.unique());
         request.setStatus(status);
         return repository.saveAndFlush(request);
     }

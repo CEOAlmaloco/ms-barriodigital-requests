@@ -3,6 +3,7 @@
 
 CREATE TABLE municipal_requests (
     id              VARCHAR2(36)   PRIMARY KEY,
+    folio           VARCHAR2(14 CHAR) NOT NULL,
     title           VARCHAR2(200)  NOT NULL,
     description     VARCHAR2(2000) NOT NULL,
     procedure_type  VARCHAR2(100)  NOT NULL,
@@ -20,7 +21,15 @@ CREATE TABLE municipal_requests (
     rejection_reason VARCHAR2(500),
     has_attachment  NUMBER(1) DEFAULT 0 NOT NULL,
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL,
-    updated_at      TIMESTAMP WITH TIME ZONE NOT NULL
+    updated_at      TIMESTAMP WITH TIME ZONE NOT NULL,
+    CONSTRAINT uk_municipal_requests_folio UNIQUE (folio)
+);
+
+-- Último número de folio entregado por año (EP3-05). Las bases con trámites anteriores usan folio-existing-requests.sql.
+CREATE TABLE folio_counter (
+    folio_year  NUMBER(4) NOT NULL,
+    last_number NUMBER    NOT NULL,
+    CONSTRAINT pk_folio_counter PRIMARY KEY (folio_year)
 );
 
 CREATE TABLE municipal_request_attachments (

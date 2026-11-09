@@ -1,11 +1,14 @@
 package cl.duoc.barriodigital.requests.integration;
 
+import cl.duoc.barriodigital.requests.config.ClockConfig;
 import cl.duoc.barriodigital.requests.config.RabbitConfig;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.messaging.EventPublisher;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
+import cl.duoc.barriodigital.requests.service.FolioCounterService;
 import cl.duoc.barriodigital.requests.service.ImageAttachmentSanitizer;
 import cl.duoc.barriodigital.requests.service.RequestActivityService;
+import cl.duoc.barriodigital.requests.service.RequestCreationOrchestrationService;
 import cl.duoc.barriodigital.requests.service.RequestService;
 import cl.duoc.barriodigital.requests.web.RequestController;
 import org.springframework.boot.SpringApplication;
@@ -23,6 +26,9 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @Import({
         RequestController.class,
         RequestService.class,
+        RequestCreationOrchestrationService.class,
+        FolioCounterService.class,
+        ClockConfig.class,
         RequestActivityService.class,
         ImageAttachmentSanitizer.class,
         RabbitConfig.class,
