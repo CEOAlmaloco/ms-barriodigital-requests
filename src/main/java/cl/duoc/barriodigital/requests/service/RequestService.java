@@ -320,7 +320,7 @@ public class RequestService {
      * Si el header viene vacío, mal codificado o con caracteres de control, usa el id. Si tampoco hay id, queda "Sin nombre".
      * No supera 200 caracteres.
      */
-    static String snapshotName(String headerName, String solicitanteId) {
+    public static String snapshotName(String headerName, String solicitanteId) {
         String fromHeader = truncate(decodeHeader(headerName), NAME_MAX);
         if (fromHeader != null) {
             return fromHeader;

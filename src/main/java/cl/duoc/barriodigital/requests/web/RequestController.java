@@ -9,7 +9,9 @@ import cl.duoc.barriodigital.requests.service.RequestActivityService;
 import cl.duoc.barriodigital.requests.service.RequestAttachmentContent;
 import cl.duoc.barriodigital.requests.service.RequestCreationOrchestrationService;
 import cl.duoc.barriodigital.requests.service.RequestService;
+import cl.duoc.barriodigital.requests.service.StaffMemberService;
 import cl.duoc.barriodigital.requests.web.dto.ActividadView;
+import cl.duoc.barriodigital.requests.web.dto.AssigneeView;
 import cl.duoc.barriodigital.requests.web.dto.ChangeStatusDto;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import cl.duoc.barriodigital.requests.web.dto.RegisterGestionDto;
@@ -51,18 +53,21 @@ public class RequestController {
     private final RequestCreationOrchestrationService creation;
     private final RequestActivityService activityService;
     private final ImageAttachmentSanitizer imageSanitizer;
+    private final StaffMemberService staffMembers;
 
-    /** Recibe el servicio del trámite, el orquestador del alta, el del historial y el saneador de imágenes. */
+    /** Recibe los servicios del trámite, del alta, del historial y del personal, y el saneador de imágenes. */
     public RequestController(
             RequestService requestService,
             RequestCreationOrchestrationService creation,
             RequestActivityService activityService,
-            ImageAttachmentSanitizer imageSanitizer
+            ImageAttachmentSanitizer imageSanitizer,
+            StaffMemberService staffMembers
     ) {
         this.requestService = requestService;
         this.creation = creation;
         this.activityService = activityService;
         this.imageSanitizer = imageSanitizer;
+        this.staffMembers = staffMembers;
     }
 
     /** Crea un trámite con el body y la identidad de los headers. */
@@ -154,6 +159,18 @@ public class RequestController {
     ) {
         ActividadView view = activityService.registerGestion(id, body, new CallerContext(userId, roles, userName));
         return ResponseEntity.status(HttpStatus.CREATED).body(view);
+    }
+
+    /**
+     * Funcionarios a los que se puede asignar un trámite, por nombre. Solo Funcionario y Admin.
+     * Es una ruta literal, así que {id} no la captura.
+     */
+    @GetMapping("/assignees")
+    public List<AssigneeView> assignees(
+            @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
+            @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles
+    ) {
+        return staffMembers.assignees(new CallerContext(userId, roles));
     }
 
     /** Devuelve un trámite. Quien no es personal solo obtiene el suyo. */

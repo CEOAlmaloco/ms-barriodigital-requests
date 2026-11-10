@@ -11,8 +11,10 @@ import cl.duoc.barriodigital.requests.service.ImageAttachmentSanitizer;
 import cl.duoc.barriodigital.requests.service.RequestActivityService;
 import cl.duoc.barriodigital.requests.service.RequestCreationOrchestrationService;
 import cl.duoc.barriodigital.requests.service.RequestService;
+import cl.duoc.barriodigital.requests.service.StaffMemberService;
 import cl.duoc.barriodigital.requests.web.RequestController;
 import cl.duoc.barriodigital.requests.web.SingleRoleInterceptor;
+import cl.duoc.barriodigital.requests.web.StaffMemberInterceptor;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
@@ -33,6 +35,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
         ClockConfig.class,
         WebConfig.class,
         SingleRoleInterceptor.class,
+        StaffMemberService.class,
+        StaffMemberInterceptor.class,
         RequestActivityService.class,
         ImageAttachmentSanitizer.class,
         RabbitConfig.class,

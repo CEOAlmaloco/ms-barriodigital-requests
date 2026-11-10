@@ -1,13 +1,16 @@
 package cl.duoc.barriodigital.requests.web;
 
+import cl.duoc.barriodigital.requests.config.ClockConfig;
 import cl.duoc.barriodigital.requests.service.ImageAttachmentSanitizer;
 import cl.duoc.barriodigital.requests.service.RequestActivityService;
 import cl.duoc.barriodigital.requests.service.RequestCreationOrchestrationService;
 import cl.duoc.barriodigital.requests.service.RequestService;
+import cl.duoc.barriodigital.requests.service.StaffMemberService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -17,6 +20,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 /** Un rol por usuario en toda la API de requests, salvo /meta/** (contrato EP3-04, secciones 1 y 4). */
 @WebMvcTest(RequestController.class)
+@Import(ClockConfig.class)
 class SingleRoleInterceptorTest {
 
     @Autowired
@@ -33,6 +37,9 @@ class SingleRoleInterceptorTest {
 
     @MockBean
     private ImageAttachmentSanitizer imageSanitizer;
+
+    @MockBean
+    private StaffMemberService staffMembers;
 
     @Test
     void sinRolResponde403AntesDelCasoDeUso() throws Exception {
