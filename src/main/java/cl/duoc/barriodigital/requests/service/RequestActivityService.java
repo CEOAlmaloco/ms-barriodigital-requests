@@ -58,18 +58,21 @@ public class RequestActivityService {
 
     /**
      * Registra una gestión interna. Si el guardado falla, la transacción no confirma nada.
-     * Responde en el orden del contrato EP3-04: 403 por rol, 400 si nextAttemptAt no es futura,
+     * La registra el Funcionario, o el Admin como intervención con interventionReason (EP3-04, sección 3).
+     * Responde en el orden del contrato EP3-04: 403 por rol, 400 si nextAttemptAt no es futura o si el Admin no da motivo,
      * 404 si el trámite no existe y 409 si está cerrado. El estado se revisa con la fila bloqueada.
      */
     @Transactional
     public ActividadView registerGestion(String requestId, RegisterGestionDto body, CallerContext caller) {
         requireUser(caller);
-        if (!caller.isFuncionario()) {
+        // El texto del 403 se mantiene para el Vecino y el Auditor, como el del cambio de estado.
+        if (!caller.isFuncionario() && !caller.isAdmin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo un Funcionario puede registrar una gestión");
         }
         if (body.nextAttemptAt() != null && !body.nextAttemptAt().isAfter(Instant.now())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "nextAttemptAt debe ser una fecha futura");
         }
+        String intervention = RequestService.interventionReason(caller, body.interventionReason());
         MunicipalRequest request = locked(requestId);
         if (TERMINAL.contains(request.getStatus())) {
             throw new ResponseStatusException(
@@ -87,7 +90,8 @@ public class RequestActivityService {
                 body.channel(),
                 body.result(),
                 note,
-                body.nextAttemptAt()
+                body.nextAttemptAt(),
+                intervention
         ));
         return build(request, caller, true);
     }
@@ -214,7 +218,9 @@ public class RequestActivityService {
                 event.getChannel(),
                 event.getResult(),
                 event.getNote(),
-                event.getNextAttemptAt()
+                event.getNextAttemptAt(),
+                // Interno aunque la fila sea PUBLICO (EP3-04, sección 6.2).
+                staff ? event.getInterventionReason() : null
         );
     }
 

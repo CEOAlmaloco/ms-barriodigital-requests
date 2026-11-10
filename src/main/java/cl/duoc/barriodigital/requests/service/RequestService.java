@@ -46,6 +46,9 @@ public class RequestService {
     /** Tope de las columnas solicitante_nombre y actor_name. */
     static final int NAME_MAX = 200;
 
+    /** Tope de intervention_reason, igual que rejectionReason. */
+    static final int INTERVENTION_REASON_MAX = 500;
+
     private final MunicipalRequestRepository repository;
     private final RequestActivityRepository activity;
     private final RequestAttachmentRepository attachments;
@@ -80,6 +83,10 @@ public class RequestService {
             Instant createdAt
     ) {
         requireUserId(caller);
+        // Solo el Vecino crea trámites (EP3-04, sección 2). El BFF aplica la misma regla.
+        if (!caller.isVecino()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo un Vecino puede crear un tramite");
+        }
 
         String procedureType = ProcedureTypes.normalize(body.procedureType());
         if (!ProcedureTypes.hasValidFormat(procedureType)) {
@@ -182,13 +189,21 @@ public class RequestService {
     }
 
     /**
-     * Cambia el estado. Solo un Funcionario puede hacerlo.
+     * Cambia el estado. Lo hace el Funcionario, o el Admin como intervención con interventionReason (EP3-04, sección 3).
      * Si el estado es RECHAZADO, el motivo es obligatorio y no supera 500 caracteres. Bloquea la fila para que dos cambios no se pisen.
+     * Orden de errores de EP3-04, sección 5: 403 por rol, 400 por body, 404 y 409.
      */
     @Transactional
-    public MunicipalRequest changeStatus(String id, String rawStatus, String rejectionReason, CallerContext caller) {
+    public MunicipalRequest changeStatus(
+            String id,
+            String rawStatus,
+            String rejectionReason,
+            String interventionReason,
+            CallerContext caller
+    ) {
         requireUserId(caller);
-        if (!caller.isFuncionario()) {
+        // El texto del 403 se mantiene: el BFF y el frontend lo comparan hasta que EP3-67 traiga códigos estables.
+        if (!caller.isFuncionario() && !caller.isAdmin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo un Funcionario puede cambiar el estado");
         }
 
@@ -206,6 +221,7 @@ public class RequestService {
             }
             rejectionReason = reason;
         }
+        String intervention = interventionReason(caller, interventionReason);
 
         // El bloqueo cubre lectura, validación y escritura de cualquier transición del mismo trámite.
         MunicipalRequest found = repository.findByIdForUpdate(id)
@@ -228,7 +244,8 @@ public class RequestService {
                 snapshotName(caller.userName(), caller.userId()),
                 previous,
                 saved.getStatus(),
-                target == RequestStatus.RECHAZADO ? rejectionReason : null
+                target == RequestStatus.RECHAZADO ? rejectionReason : null,
+                intervention
         ));
         publishStatusEventsAfterCommit(previous, saved);
         return saved;
@@ -310,6 +327,24 @@ public class RequestService {
         }
         String fromId = blankToNull(solicitanteId);
         return fromId != null ? fromId : "Sin nombre";
+    }
+
+    /**
+     * Motivo de intervención que queda guardado (EP3-04, sección 3). Es obligatorio para el Admin, hasta 500 caracteres
+     * después de recortar. Para el Funcionario se ignora, como rejectionReason fuera de un rechazo.
+     */
+    static String interventionReason(CallerContext caller, String raw) {
+        if (!caller.isAdmin()) {
+            return null;
+        }
+        String reason = blankToNull(raw);
+        if (reason == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "interventionReason es obligatorio para el Admin");
+        }
+        if (reason.length() > INTERVENTION_REASON_MAX) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "interventionReason no puede superar 500 caracteres");
+        }
+        return reason;
     }
 
     /** Correo que queda guardado. Si el header viene vacío, queda null. No se inventa uno. */

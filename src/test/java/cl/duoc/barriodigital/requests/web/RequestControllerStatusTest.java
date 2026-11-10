@@ -46,7 +46,7 @@ class RequestControllerStatusTest {
     void putStatusDevuelve200ConRecurso() throws Exception {
         MunicipalRequest updated = new MunicipalRequest("t", "d", "bache", "dir", "oid");
         updated.setStatus(RequestStatus.ADMITIDO);
-        when(requestService.changeStatus(eq("id-1"), eq("ADMITIDO"), isNull(), any()))
+        when(requestService.changeStatus(eq("id-1"), eq("ADMITIDO"), isNull(), isNull(), any()))
                 .thenReturn(updated);
 
         mockMvc.perform(put("/api/requests/id-1/status")
@@ -57,12 +57,12 @@ class RequestControllerStatusTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("ADMITIDO"));
 
-        verify(requestService).changeStatus(eq("id-1"), eq("ADMITIDO"), isNull(), any());
+        verify(requestService).changeStatus(eq("id-1"), eq("ADMITIDO"), isNull(), isNull(), any());
     }
 
     @Test
     void putStatusPropaga409() throws Exception {
-        when(requestService.changeStatus(eq("id-1"), eq("EN_TERRENO"), isNull(), any()))
+        when(requestService.changeStatus(eq("id-1"), eq("EN_TERRENO"), isNull(), isNull(), any()))
                 .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "No se puede pasar de INGRESADO a EN_TERRENO"));
 
         mockMvc.perform(put("/api/requests/id-1/status")
@@ -75,7 +75,7 @@ class RequestControllerStatusTest {
 
     @Test
     void putStatusPropaga400SiFaltaMotivo() throws Exception {
-        when(requestService.changeStatus(eq("id-1"), eq("RECHAZADO"), isNull(), any()))
+        when(requestService.changeStatus(eq("id-1"), eq("RECHAZADO"), isNull(), isNull(), any()))
                 .thenThrow(new ResponseStatusException(
                         HttpStatus.BAD_REQUEST,
                         "rejectionReason es obligatorio cuando el estado es RECHAZADO"));

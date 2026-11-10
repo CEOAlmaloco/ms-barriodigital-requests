@@ -71,6 +71,13 @@ public class RequestActivity {
     @Column(name = "next_attempt_at")
     private Instant nextAttemptAt;
 
+    /**
+     * Motivo de una intervención del Admin (contrato EP3-04, sección 3). Es interno: el Vecino nunca lo recibe,
+     * aunque la fila sea PUBLICO, y no entra en el summary.
+     */
+    @Column(name = "intervention_reason", length = 500)
+    private String interventionReason;
+
     protected RequestActivity() {
         // JPA
     }
@@ -114,7 +121,10 @@ public class RequestActivity {
         return event;
     }
 
-    /** Cambio de estado. Guarda el valor anterior y el nuevo. La ve el vecino. */
+    /**
+     * Cambio de estado. Guarda el valor anterior y el nuevo. La ve el vecino.
+     * El summary lleva solo el motivo de rechazo; el de intervención queda aparte, para staff.
+     */
     public static RequestActivity statusChanged(
             String requestId,
             Instant occurredAt,
@@ -122,7 +132,8 @@ public class RequestActivity {
             String actorName,
             RequestStatus from,
             RequestStatus to,
-            String reason
+            String reason,
+            String interventionReason
     ) {
         String summary = "Pasó de " + from.label() + " a " + to.label() + ".";
         if (reason != null && !reason.isBlank()) {
@@ -143,6 +154,7 @@ public class RequestActivity {
         event.fromStatus = from;
         event.toStatus = to;
         event.reason = reason == null || reason.isBlank() ? null : reason.trim();
+        event.interventionReason = blankToNull(interventionReason);
         return event;
     }
 
@@ -158,7 +170,8 @@ public class RequestActivity {
             ContactChannel channel,
             ContactResult result,
             String note,
-            Instant nextAttemptAt
+            Instant nextAttemptAt,
+            String interventionReason
     ) {
         String summary = channel.label() + ". Resultado: " + result.label() + ".";
         RequestActivity event = new RequestActivity(
@@ -174,7 +187,12 @@ public class RequestActivity {
         event.result = result;
         event.note = note == null || note.isBlank() ? null : note.trim();
         event.nextAttemptAt = nextAttemptAt;
+        event.interventionReason = blankToNull(interventionReason);
         return event;
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     public String getId() {
@@ -235,5 +253,9 @@ public class RequestActivity {
 
     public Instant getNextAttemptAt() {
         return nextAttemptAt;
+    }
+
+    public String getInterventionReason() {
+        return interventionReason;
     }
 }

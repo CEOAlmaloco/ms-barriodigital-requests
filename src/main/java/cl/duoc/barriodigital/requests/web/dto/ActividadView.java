@@ -32,7 +32,8 @@ public record ActividadView(
             ContactChannel channel,
             ContactResult result,
             String note,
-            Instant nextAttemptAt
+            Instant nextAttemptAt,
+            String interventionReason
     ) {
     }
 

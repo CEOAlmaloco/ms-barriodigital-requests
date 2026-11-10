@@ -128,7 +128,7 @@ public class RequestController {
     ) {
         CallerContext caller = new CallerContext(userId, roles, userName);
         return RequestView.of(
-                requestService.changeStatus(id, body.status(), body.rejectionReason(), caller),
+                requestService.changeStatus(id, body.status(), body.rejectionReason(), body.interventionReason(), caller),
                 caller
         );
     }

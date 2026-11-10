@@ -48,7 +48,7 @@ class RequestActivityServiceTest {
         when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
                 RequestActivity.created(request.getId(), created, "vecino", "Vecino"),
                 RequestActivity.gestion(request.getId(), created.plusSeconds(60), "func", "Ana",
-                        ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, "nota interna", created.plusSeconds(3600))
+                        ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, "nota interna", created.plusSeconds(3600), null)
         ));
 
         ActividadView view = service.get(request.getId(), new CallerContext(request.getSolicitanteId(), "Vecino"));
@@ -67,7 +67,7 @@ class RequestActivityServiceTest {
         when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
                 RequestActivity.created(request.getId(), created, "vecino-1", "Vecino Uno"),
                 RequestActivity.statusChanged(request.getId(), created.plusSeconds(60), "oid-func", "Ana Funcionaria",
-                        RequestStatus.INGRESADO, RequestStatus.ADMITIDO, null)
+                        RequestStatus.INGRESADO, RequestStatus.ADMITIDO, null, null)
         ));
 
         ActividadView vecino = service.get(request.getId(), new CallerContext("vecino-1", "Vecino"));
@@ -82,6 +82,63 @@ class RequestActivityServiceTest {
     }
 
     @Test
+    void elMotivoDeIntervencionNoLlegaAlVecinoAunqueLaFilaSeaPublica() {
+        MunicipalRequest request = request();
+        when(requests.findById(request.getId())).thenReturn(Optional.of(request));
+        Instant created = request.getCreatedAt();
+        when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
+                RequestActivity.statusChanged(request.getId(), created.plusSeconds(60), "adm-1", "Admin",
+                        RequestStatus.INGRESADO, RequestStatus.RECHAZADO, "Duplicado", "Reclamo en la OIRS")
+        ));
+
+        ActividadView vecino = service.get(request.getId(), new CallerContext("vecino-1", "Vecino"));
+        ActividadView auditor = service.get(request.getId(), new CallerContext("aud-1", "Auditor"));
+
+        assertNull(vecino.eventos().get(0).interventionReason());
+        assertEquals("Duplicado", vecino.eventos().get(0).reason());
+        assertEquals(false, vecino.eventos().get(0).summary().contains("OIRS"));
+        assertEquals("Reclamo en la OIRS", auditor.eventos().get(0).interventionReason());
+    }
+
+    @Test
+    void elAdminRegistraUnaGestionConMotivoDeIntervencion() {
+        MunicipalRequest request = request();
+        when(requests.findByIdForUpdate(request.getId())).thenReturn(Optional.of(request));
+
+        service.registerGestion(request.getId(),
+                new RegisterGestionDto(ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, null, null, " Vecino reclamó "),
+                new CallerContext("adm-1", "Admin", "Admin"));
+
+        ArgumentCaptor<RequestActivity> saved = ArgumentCaptor.forClass(RequestActivity.class);
+        verify(activity).save(saved.capture());
+        assertEquals("Vecino reclamó", saved.getValue().getInterventionReason());
+    }
+
+    @Test
+    void elAdminSinMotivoRecibe400AntesDeBuscarElTramite() {
+        ResponseStatusException error = assertThrows(ResponseStatusException.class, () -> service.registerGestion(
+                "no-existe",
+                new RegisterGestionDto(ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, null, null),
+                new CallerContext("adm-1", "Admin")));
+
+        assertEquals(400, error.getStatusCode().value());
+        assertEquals("interventionReason es obligatorio para el Admin", error.getReason());
+        verifyNoInteractions(requests, activity);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Vecino", "Auditor"})
+    void elVecinoYElAuditorNoRegistranGestionesYConservanElTextoActual(String role) {
+        ResponseStatusException error = assertThrows(ResponseStatusException.class, () -> service.registerGestion(
+                "id-1",
+                new RegisterGestionDto(ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, null, null),
+                new CallerContext("u-1", role)));
+
+        assertEquals(403, error.getStatusCode().value());
+        assertEquals("Solo un Funcionario puede registrar una gestión", error.getReason());
+    }
+
+    @Test
     void elFuncionarioVeElIntentoYLaPrimeraAtencion() {
         MunicipalRequest request = request();
         when(requests.findById(request.getId())).thenReturn(Optional.of(request));
@@ -89,7 +146,7 @@ class RequestActivityServiceTest {
         when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
                 RequestActivity.created(request.getId(), created, "vecino", "Vecino"),
                 RequestActivity.gestion(request.getId(), created.plusSeconds(90), "func", "Ana",
-                        ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, null, null)
+                        ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, null, null, null)
         ));
 
         ActividadView view = service.get(request.getId(), new CallerContext("func", "Funcionario", "Ana"));
@@ -111,7 +168,7 @@ class RequestActivityServiceTest {
     }
 
     @Test
-    void soloElFuncionarioRegistraUnaGestion() {
+    void elAuditorNoRegistraGestionesYElFuncionarioSi() {
         MunicipalRequest request = request();
         when(requests.findByIdForUpdate(request.getId())).thenReturn(Optional.of(request));
         when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of());
@@ -119,7 +176,7 @@ class RequestActivityServiceTest {
         assertThrows(ResponseStatusException.class, () -> service.registerGestion(
                 request.getId(),
                 new RegisterGestionDto(ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, null, null),
-                new CallerContext("admin", "Admin", "Admin")));
+                new CallerContext("aud", "Auditor", "Auditor")));
 
         service.registerGestion(
                 request.getId(),
@@ -204,9 +261,9 @@ class RequestActivityServiceTest {
         List<RequestActivity> events = List.of(
                 RequestActivity.created(request.getId(), created, "vecino", "Vecino"),
                 RequestActivity.statusChanged(request.getId(), created.plusSeconds(100), "func", "Ana",
-                        RequestStatus.INGRESADO, RequestStatus.ADMITIDO, null),
+                        RequestStatus.INGRESADO, RequestStatus.ADMITIDO, null, null),
                 RequestActivity.statusChanged(request.getId(), created.plusSeconds(400), "func", "Ana",
-                        RequestStatus.EN_TERRENO, RequestStatus.RESUELTO, null)
+                        RequestStatus.EN_TERRENO, RequestStatus.RESUELTO, null, null)
         );
 
         ActividadView.TiemposView tiempos = RequestActivityService.tiempos(request, events, true, created.plusSeconds(999));
