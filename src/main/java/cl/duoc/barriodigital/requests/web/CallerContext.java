@@ -40,6 +40,11 @@ public record CallerContext(
         return hasRole("Funcionario") || hasRole("ROLE_Funcionario");
     }
 
+    /** Indica si el rol es Auditor. No opera y no recibe el correo del solicitante (EP3-04, sección 6.1). */
+    public boolean isAuditor() {
+        return hasRole("Auditor") || hasRole("ROLE_Auditor");
+    }
+
     /** Indica si el rol es Admin, Funcionario o Auditor. */
     public boolean isStaff() {
         return hasRole("Admin")

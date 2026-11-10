@@ -60,6 +60,28 @@ class RequestActivityServiceTest {
     }
 
     @Test
+    void elVecinoVeASuNombreEnSusEventosYAMunicipalidadEnLosDelStaff() {
+        MunicipalRequest request = request();
+        when(requests.findById(request.getId())).thenReturn(Optional.of(request));
+        Instant created = request.getCreatedAt();
+        when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
+                RequestActivity.created(request.getId(), created, "vecino-1", "Vecino Uno"),
+                RequestActivity.statusChanged(request.getId(), created.plusSeconds(60), "oid-func", "Ana Funcionaria",
+                        RequestStatus.INGRESADO, RequestStatus.ADMITIDO, null)
+        ));
+
+        ActividadView vecino = service.get(request.getId(), new CallerContext("vecino-1", "Vecino"));
+        ActividadView staff = service.get(request.getId(), new CallerContext("aud-1", "Auditor"));
+
+        assertEquals("vecino-1", vecino.eventos().get(0).actorId());
+        assertEquals("Vecino Uno", vecino.eventos().get(0).actorName());
+        assertNull(vecino.eventos().get(1).actorId());
+        assertEquals("Municipalidad", vecino.eventos().get(1).actorName());
+        assertEquals("oid-func", staff.eventos().get(1).actorId());
+        assertEquals("Ana Funcionaria", staff.eventos().get(1).actorName());
+    }
+
+    @Test
     void elFuncionarioVeElIntentoYLaPrimeraAtencion() {
         MunicipalRequest request = request();
         when(requests.findById(request.getId())).thenReturn(Optional.of(request));

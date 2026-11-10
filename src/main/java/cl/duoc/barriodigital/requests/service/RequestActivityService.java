@@ -38,6 +38,9 @@ public class RequestActivityService {
     private static final Set<RequestStatus> TERMINAL = EnumSet.of(
             RequestStatus.RESUELTO, RequestStatus.RECHAZADO);
 
+    /** Nombre con que el Vecino ve a quien actuó por la municipalidad (EP3-04, sección 6.2). */
+    static final String MUNICIPALIDAD = "Municipalidad";
+
     static final List<String> LIMITES = List.of(
             "La hora la marca el servidor en UTC. La pantalla la muestra en la zona del navegador.",
             "Los segundos son de calendario. Todavía no hay horario hábil ni feriados.",
@@ -104,7 +107,7 @@ public class RequestActivityService {
                 : all.stream().filter(event -> event.getVisibility() == ActivityVisibility.PUBLICO).toList();
         return new ActividadView(
                 request.getId(),
-                visible.stream().map(RequestActivityService::toEvento).toList(),
+                visible.stream().map(event -> toEvento(event, staff, request.getSolicitanteId())).toList(),
                 tiempos(request, all, staff, Instant.now()),
                 staff ? contacto(all) : null,
                 LIMITES
@@ -191,14 +194,19 @@ public class RequestActivityService {
         return new ContactoView(gestiones.size(), last.getOccurredAt(), last.getNextAttemptAt(), accion);
     }
 
-    private static EventoView toEvento(RequestActivity event) {
+    /**
+     * Para quien no es staff, un evento hecho por staff no lleva el id ni el nombre del funcionario:
+     * aparece como "Municipalidad". Los eventos del propio vecino conservan su nombre.
+     */
+    static EventoView toEvento(RequestActivity event, boolean staff, String solicitanteId) {
+        boolean anonymous = !staff && (event.getActorId() == null || !event.getActorId().equals(solicitanteId));
         return new EventoView(
                 event.getId(),
                 event.getOccurredAt(),
                 event.getKind(),
                 event.getVisibility(),
-                event.getActorId(),
-                event.getActorName(),
+                anonymous ? null : event.getActorId(),
+                anonymous ? MUNICIPALIDAD : event.getActorName(),
                 event.getSummary(),
                 event.getFromStatus(),
                 event.getToStatus(),
