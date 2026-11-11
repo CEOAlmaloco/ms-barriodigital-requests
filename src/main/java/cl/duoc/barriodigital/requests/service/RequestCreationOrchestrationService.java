@@ -2,6 +2,7 @@ package cl.duoc.barriodigital.requests.service;
 
 import cl.duoc.barriodigital.requests.domain.Folio;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
+import cl.duoc.barriodigital.requests.domain.StoredInstant;
 import cl.duoc.barriodigital.requests.web.CallerContext;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -37,7 +38,7 @@ public class RequestCreationOrchestrationService {
             CallerContext caller,
             ImageAttachmentSanitizer.SanitizedImage image
     ) {
-        Instant now = clock.instant();
+        Instant now = StoredInstant.of(clock.instant());
         try {
             folios.ensureYear(Folio.yearOf(now));
         } catch (DataIntegrityViolationException ex) {

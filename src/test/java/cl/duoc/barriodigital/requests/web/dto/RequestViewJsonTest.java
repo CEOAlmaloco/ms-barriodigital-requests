@@ -31,7 +31,7 @@ class RequestViewJsonTest {
             "solicitanteEmail", "status", "rejectionReason", "hasAttachment", "createdAt", "updatedAt");
 
     @Test
-    void conservaLosCamposYValoresActualesIncluidoElFolioYSumaElResponsableAlFinal() throws Exception {
+    void conservaLosCamposYValoresActualesIncluidoElFolioYSumaResponsableYPlazoAlFinal() throws Exception {
         MunicipalRequest request = request();
         request.assignTo("oid-func", "Ana Funcionaria");
 
@@ -39,7 +39,7 @@ class RequestViewJsonTest {
         JsonNode view = mapper.valueToTree(RequestView.of(request, new CallerContext("func-1", "Funcionario")));
 
         List<String> expected = new ArrayList<>(CURRENT_FIELDS);
-        expected.addAll(List.of("hasAssignee", "assigneeId", "assigneeName"));
+        expected.addAll(List.of("hasAssignee", "assigneeId", "assigneeName", "slaBusinessDays"));
         assertEquals(expected, names(view));
         for (String field : CURRENT_FIELDS) {
             assertEquals(entity.get(field), view.get(field), field);
@@ -48,6 +48,20 @@ class RequestViewJsonTest {
         assertTrue(view.get("hasAssignee").booleanValue());
         assertEquals("oid-func", view.get("assigneeId").asText());
         assertEquals("Ana Funcionaria", view.get("assigneeName").asText());
+        assertEquals(5, view.get("slaBusinessDays").intValue());
+    }
+
+    @Test
+    void losCuatroRolesVenElPlazoYSinPlazoVaNull() {
+        MunicipalRequest request = request();
+        for (String role : List.of("Vecino", "Funcionario", "Admin", "Auditor")) {
+            assertEquals(5, RequestView.of(request, new CallerContext("oid-1", role)).slaBusinessDays(), role);
+        }
+
+        request.snapshotSlaBusinessDays(null);
+        JsonNode view = mapper.valueToTree(RequestView.of(request, new CallerContext("vecino-1", "Vecino")));
+        assertTrue(view.has("slaBusinessDays"));
+        assertTrue(view.get("slaBusinessDays").isNull());
     }
 
     @Test
@@ -82,6 +96,7 @@ class RequestViewJsonTest {
         request.assignFolio("BD-2026-000123");
         request.placeLocation("centro", "Frente al poste", -37.87, -71.6, LocationPrecision.EXACTO);
         request.setHasAttachment(true);
+        request.snapshotSlaBusinessDays(5);
         return request;
     }
 

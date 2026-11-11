@@ -143,6 +143,24 @@ class RequestControllerCreateTest {
     }
 
     @Test
+    void postPasaElHeaderDePlazoAlServicio() throws Exception {
+        when(creation.create(any(CreateRequestDto.class), any(CallerContext.class), isNull()))
+                .thenReturn(new MunicipalRequest("t", "d", "bache", "dir", "oid-1", "Alex", null));
+
+        mockMvc.perform(post("/api/requests")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(CallerContext.HEADER_USER_ID, "oid-1")
+                        .header(CallerContext.HEADER_USER_ROLES, "Vecino")
+                        .header(CallerContext.HEADER_PROCEDURE_SLA_DAYS, "5")
+                        .content("{\"description\":\"Hueco\",\"procedureType\":\"bache\",\"address\":\"Calle 1\"}"))
+                .andExpect(status().isCreated());
+
+        ArgumentCaptor<CallerContext> caller = ArgumentCaptor.forClass(CallerContext.class);
+        verify(creation).create(any(CreateRequestDto.class), caller.capture(), isNull());
+        assertEquals("5", caller.getValue().procedureSlaDays());
+    }
+
+    @Test
     void postSinHeaderDeLabelDevuelveProcedureLabelNull() throws Exception {
         when(creation.create(any(CreateRequestDto.class), any(CallerContext.class), isNull()))
                 .thenReturn(new MunicipalRequest("t", "d", "bache", "dir", "oid-1", "Alex", null));

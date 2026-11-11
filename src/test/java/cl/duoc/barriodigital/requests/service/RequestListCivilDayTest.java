@@ -1,7 +1,9 @@
 package cl.duoc.barriodigital.requests.service;
 
 import cl.duoc.barriodigital.requests.TestFolios;
+import cl.duoc.barriodigital.requests.config.ClockConfig;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
+import cl.duoc.barriodigital.requests.messaging.DomainEventRecorder;
 import cl.duoc.barriodigital.requests.messaging.EventPublisher;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
@@ -25,7 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /** Filtro por días civiles de Chile contra la consulta real en H2; no valida el entorno Oracle desplegado. */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
-@Import({RequestService.class, FolioCounterService.class})
+@Import({RequestService.class, FolioCounterService.class, DomainEventRecorder.class, ClockConfig.class})
 @TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class RequestListCivilDayTest {
 

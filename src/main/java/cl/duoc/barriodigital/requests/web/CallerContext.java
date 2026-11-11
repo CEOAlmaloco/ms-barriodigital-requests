@@ -15,7 +15,8 @@ public record CallerContext(
         String rolesHeader,
         String userName,
         String userEmail,
-        String procedureLabel
+        String procedureLabel,
+        String procedureSlaDays
 ) {
 
     public static final String HEADER_USER_ID = "X-User-Id";
@@ -25,6 +26,8 @@ public record CallerContext(
     public static final String HEADER_USER_EMAIL = "X-User-Email";
     /** Etiqueta del tipo según catalog. El BFF la manda codificada en URL (UTF-8), solo en el POST. */
     public static final String HEADER_PROCEDURE_LABEL = "X-Procedure-Label";
+    /** Plazo del tipo en días hábiles según catalog (EP3-06). El BFF lo manda solo en el POST y solo si el tipo tiene plazo. */
+    public static final String HEADER_PROCEDURE_SLA_DAYS = "X-Procedure-Sla-Days";
 
     public static final String VECINO = "Vecino";
     public static final String FUNCIONARIO = "Funcionario";
@@ -37,19 +40,24 @@ public record CallerContext(
     static final String MANY_ROLES = "El usuario debe tener un solo rol";
     private static final String ROLE_PREFIX = "ROLE_";
 
+    /** Identidad con etiqueta del tipo, sin plazo. */
+    public CallerContext(String userId, String rolesHeader, String userName, String userEmail, String procedureLabel) {
+        this(userId, rolesHeader, userName, userEmail, procedureLabel, null);
+    }
+
     /** Identidad sin etiqueta del tipo. */
     public CallerContext(String userId, String rolesHeader, String userName, String userEmail) {
-        this(userId, rolesHeader, userName, userEmail, null);
+        this(userId, rolesHeader, userName, userEmail, null, null);
     }
 
     /** Identidad sin correo. Consultar y cambiar el estado no lo usan. */
     public CallerContext(String userId, String rolesHeader, String userName) {
-        this(userId, rolesHeader, userName, null, null);
+        this(userId, rolesHeader, userName, null, null, null);
     }
 
     /** Identidad solo con id y roles. El alta usa el id como respaldo del nombre. */
     public CallerContext(String userId, String rolesHeader) {
-        this(userId, rolesHeader, null, null, null);
+        this(userId, rolesHeader, null, null, null, null);
     }
 
     /**

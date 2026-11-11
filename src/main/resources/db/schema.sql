@@ -22,6 +22,7 @@ CREATE TABLE municipal_requests (
     has_attachment  NUMBER(1) DEFAULT 0 NOT NULL,
     assignee_id     VARCHAR2(64),
     assignee_name   VARCHAR2(200),
+    sla_business_days NUMBER(10),
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL,
     updated_at      TIMESTAMP WITH TIME ZONE NOT NULL,
     CONSTRAINT uk_municipal_requests_folio UNIQUE (folio)
@@ -58,6 +59,7 @@ CREATE TABLE request_activity (
     visibility       VARCHAR2(20)  NOT NULL,
     actor_id         VARCHAR2(64),
     actor_name       VARCHAR2(200),
+    actor_role       VARCHAR2(20),
     summary          VARCHAR2(500) NOT NULL,
     from_status      VARCHAR2(30),
     to_status        VARCHAR2(30),
@@ -78,6 +80,24 @@ CREATE TABLE request_activity (
 );
 
 CREATE INDEX idx_request_activity_request ON request_activity (request_id);
+
+-- Outbox de eventos Kafka (EP3-02, sección 2.1). La crea db/outbox-events.sql antes del primer arranque:
+-- Hibernate no sabe crear el identity con ORDER.
+CREATE TABLE outbox_events (
+    event_id       VARCHAR2(36)  NOT NULL,
+    event_sequence NUMBER GENERATED ALWAYS AS IDENTITY (START WITH 1 INCREMENT BY 1 ORDER),
+    aggregate_id   VARCHAR2(36)  NOT NULL,
+    event_type     VARCHAR2(60)  NOT NULL,
+    payload        CLOB          NOT NULL,
+    created_at     TIMESTAMP WITH TIME ZONE NOT NULL,
+    published_at   TIMESTAMP WITH TIME ZONE,
+    attempts       NUMBER(10)    DEFAULT 0 NOT NULL,
+    last_error     VARCHAR2(500),
+    CONSTRAINT pk_outbox_events PRIMARY KEY (event_id),
+    CONSTRAINT uk_outbox_events_sequence UNIQUE (event_sequence)
+);
+
+CREATE INDEX idx_outbox_pending ON outbox_events (published_at, event_sequence);
 
 -- Personal municipal visto por requests (EP3-05, sección 5). Los vecinos no se registran.
 CREATE TABLE staff_member (

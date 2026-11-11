@@ -3,6 +3,7 @@ package cl.duoc.barriodigital.requests.service;
 import cl.duoc.barriodigital.requests.domain.ActivityKind;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestActivity;
+import cl.duoc.barriodigital.requests.messaging.DomainEventRecorder;
 import cl.duoc.barriodigital.requests.messaging.EventPublisher;
 import cl.duoc.barriodigital.requests.persistence.FolioCounterRepository;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
@@ -52,7 +53,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import({RequestService.class, FolioCounterService.class, RequestCreationOrchestrationService.class,
-        RequestFolioTest.FixedClock.class})
+        RequestFolioTest.FixedClock.class, DomainEventRecorder.class})
 @TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class RequestFolioTest {
 

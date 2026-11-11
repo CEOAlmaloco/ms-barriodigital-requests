@@ -6,6 +6,7 @@ import cl.duoc.barriodigital.requests.domain.RequestActivity;
 import cl.duoc.barriodigital.requests.domain.RequestAttachment;
 import cl.duoc.barriodigital.requests.domain.RequestAttachment;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
+import cl.duoc.barriodigital.requests.messaging.DomainEventRecorder;
 import cl.duoc.barriodigital.requests.messaging.EventPublisher;
 import cl.duoc.barriodigital.requests.messaging.RequestEventPayload;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
@@ -79,6 +80,9 @@ class RequestServiceTest {
 
     @Mock
     private FolioCounterService folios;
+
+    @Mock
+    private DomainEventRecorder events;
 
     @InjectMocks
     private RequestService requestService;
@@ -424,6 +428,26 @@ class RequestServiceTest {
         assertNull(enBlanco.getProcedureLabel());
         assertEquals("Alumbrado público — Calle 2", sinHeader.getTitle());
         assertEquals("Alumbrado público — Calle 2", enBlanco.getTitle());
+    }
+
+    @Test
+    void createGuardaElPlazoDelHeader() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        MunicipalRequest conPlazo = create(new CreateRequestDto("Hueco", "bache", "Calle 1"),
+                new CallerContext("oid-1", "Vecino", "Alex", null, null, "5"));
+        MunicipalRequest sinPlazo = create(new CreateRequestDto("Hueco", "bache", "Calle 1"),
+                new CallerContext("oid-1", "Vecino", "Alex"));
+
+        assertEquals(5, conPlazo.getSlaBusinessDays());
+        assertNull(sinPlazo.getSlaBusinessDays());
+    }
+
+    @ParameterizedTest
+    @CsvSource(value = {"1,1", "120,120", "' 7 ',7", "0,NULL", "121,NULL", "-3,NULL", "abc,NULL", "5.5,NULL",
+            "'   ',NULL", "99999999999,NULL"}, nullValues = "NULL")
+    void elPlazoDelHeaderSoloAceptaEnterosDe1A120YSinoQuedaSinPlazo(String header, Integer expected) {
+        assertEquals(expected, RequestService.snapshotSlaDays(header));
     }
 
     @Test

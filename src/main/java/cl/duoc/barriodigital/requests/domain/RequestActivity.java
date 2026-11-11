@@ -48,6 +48,10 @@ public class RequestActivity {
     @Column(name = "actor_name", length = 200)
     private String actorName;
 
+    /** El único rol de quien actuó (EP3-04, sección 4). Null en el hito sin actor y en las filas anteriores a EP3-31. */
+    @Column(name = "actor_role", length = 20)
+    private String actorRole;
+
     @Column(nullable = false, length = 500)
     private String summary;
 
@@ -108,6 +112,7 @@ public class RequestActivity {
             ActivityVisibility visibility,
             String actorId,
             String actorName,
+            String actorRole,
             String summary
     ) {
         this.id = UUID.randomUUID().toString();
@@ -117,6 +122,7 @@ public class RequestActivity {
         this.visibility = visibility;
         this.actorId = actorId;
         this.actorName = actorName;
+        this.actorRole = actorRole;
         this.summary = summary;
     }
 
@@ -125,7 +131,8 @@ public class RequestActivity {
             String requestId,
             Instant occurredAt,
             String actorId,
-            String actorName
+            String actorName,
+            String actorRole
     ) {
         RequestActivity event = new RequestActivity(
                 requestId,
@@ -134,6 +141,7 @@ public class RequestActivity {
                 ActivityVisibility.PUBLICO,
                 actorId,
                 actorName,
+                actorRole,
                 "Solicitud recibida."
         );
         event.toStatus = RequestStatus.INGRESADO;
@@ -149,6 +157,7 @@ public class RequestActivity {
             Instant occurredAt,
             String actorId,
             String actorName,
+            String actorRole,
             RequestStatus from,
             RequestStatus to,
             String reason,
@@ -168,6 +177,7 @@ public class RequestActivity {
                 ActivityVisibility.PUBLICO,
                 actorId,
                 actorName,
+                actorRole,
                 summary
         );
         event.fromStatus = from;
@@ -186,6 +196,7 @@ public class RequestActivity {
             Instant occurredAt,
             String actorId,
             String actorName,
+            String actorRole,
             ContactChannel channel,
             ContactResult result,
             String note,
@@ -200,6 +211,7 @@ public class RequestActivity {
                 ActivityVisibility.INTERNO,
                 actorId,
                 actorName,
+                actorRole,
                 summary
         );
         event.channel = channel;
@@ -219,6 +231,7 @@ public class RequestActivity {
             Instant occurredAt,
             String actorId,
             String actorName,
+            String actorRole,
             String assigneeId,
             String assigneeName,
             String previousAssigneeId,
@@ -243,6 +256,7 @@ public class RequestActivity {
                 ActivityVisibility.INTERNO,
                 actorId,
                 actorName,
+                actorRole,
                 summary
         );
         event.assigneeId = assigneeId;
@@ -263,6 +277,7 @@ public class RequestActivity {
                 occurredAt,
                 ActivityKind.ASIGNACION,
                 ActivityVisibility.PUBLICO,
+                null,
                 null,
                 null,
                 "Tu solicitud fue asignada para su atención"
@@ -299,6 +314,10 @@ public class RequestActivity {
 
     public String getActorName() {
         return actorName;
+    }
+
+    public String getActorRole() {
+        return actorRole;
     }
 
     public String getSummary() {

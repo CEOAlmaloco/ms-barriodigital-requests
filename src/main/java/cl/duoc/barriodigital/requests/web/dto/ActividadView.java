@@ -25,6 +25,7 @@ public record ActividadView(
             ActivityVisibility visibility,
             String actorId,
             String actorName,
+            String actorRole,
             String summary,
             RequestStatus fromStatus,
             RequestStatus toStatus,

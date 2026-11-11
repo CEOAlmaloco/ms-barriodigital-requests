@@ -5,6 +5,8 @@ import cl.duoc.barriodigital.requests.domain.ActivityVisibility;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestActivity;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
+import cl.duoc.barriodigital.requests.domain.StoredInstant;
+import cl.duoc.barriodigital.requests.messaging.DomainEventRecorder;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.persistence.RequestActivityRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
@@ -25,6 +27,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Lee y agrega marcas del expediente. Crear y cambiar el estado también escriben una marca,
@@ -50,10 +53,16 @@ public class RequestActivityService {
 
     private final MunicipalRequestRepository requests;
     private final RequestActivityRepository activity;
+    private final DomainEventRecorder events;
 
-    public RequestActivityService(MunicipalRequestRepository requests, RequestActivityRepository activity) {
+    public RequestActivityService(
+            MunicipalRequestRepository requests,
+            RequestActivityRepository activity,
+            DomainEventRecorder events
+    ) {
         this.requests = requests;
         this.activity = activity;
+        this.events = events;
     }
 
     /**
@@ -83,18 +92,21 @@ public class RequestActivityService {
             );
         }
         String note = body.note() == null ? null : body.note().trim();
-        activity.save(RequestActivity.gestion(
+        RequestActivity gestion = activity.save(RequestActivity.gestion(
                 request.getId(),
                 // La hora se toma con la fila ya bloqueada, para que la línea de tiempo respete el orden real.
-                Instant.now(),
+                StoredInstant.now(),
                 caller.userId().trim(),
                 RequestService.snapshotName(caller.userName(), caller.userId()),
+                caller.role(),
                 body.channel(),
                 body.result(),
                 note,
                 body.nextAttemptAt(),
                 intervention
         ));
+        // Sin comandos de RabbitMQ: el traceId identifica solo esta gestión.
+        events.record(request, gestion, UUID.randomUUID());
         return build(request, caller, true);
     }
 
@@ -228,6 +240,8 @@ public class RequestActivityService {
                 event.getVisibility(),
                 anonymous ? null : event.getActorId(),
                 anonymous ? MUNICIPALIDAD : event.getActorName(),
+                // El rol del actor es para staff: el Vecino no lo recibe, ni en sus propias marcas (EP3-04, sección 6.2).
+                staff ? event.getActorRole() : null,
                 event.getSummary(),
                 event.getFromStatus(),
                 event.getToStatus(),

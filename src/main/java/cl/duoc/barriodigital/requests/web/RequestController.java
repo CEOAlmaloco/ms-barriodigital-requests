@@ -85,9 +85,10 @@ public class RequestController {
             @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles,
             @RequestHeader(value = CallerContext.HEADER_USER_NAME, required = false) String userName,
             @RequestHeader(value = CallerContext.HEADER_USER_EMAIL, required = false) String userEmail,
-            @RequestHeader(value = CallerContext.HEADER_PROCEDURE_LABEL, required = false) String procedureLabel
+            @RequestHeader(value = CallerContext.HEADER_PROCEDURE_LABEL, required = false) String procedureLabel,
+            @RequestHeader(value = CallerContext.HEADER_PROCEDURE_SLA_DAYS, required = false) String procedureSlaDays
     ) {
-        CallerContext caller = new CallerContext(userId, roles, userName, userEmail, procedureLabel);
+        CallerContext caller = new CallerContext(userId, roles, userName, userEmail, procedureLabel, procedureSlaDays);
         MunicipalRequest created = creation.create(body, caller, null);
         return ResponseEntity.status(HttpStatus.CREATED).body(RequestView.of(created, caller));
     }
@@ -101,10 +102,11 @@ public class RequestController {
             @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles,
             @RequestHeader(value = CallerContext.HEADER_USER_NAME, required = false) String userName,
             @RequestHeader(value = CallerContext.HEADER_USER_EMAIL, required = false) String userEmail,
-            @RequestHeader(value = CallerContext.HEADER_PROCEDURE_LABEL, required = false) String procedureLabel
+            @RequestHeader(value = CallerContext.HEADER_PROCEDURE_LABEL, required = false) String procedureLabel,
+            @RequestHeader(value = CallerContext.HEADER_PROCEDURE_SLA_DAYS, required = false) String procedureSlaDays
     ) {
         var image = attachment == null ? null : imageSanitizer.sanitize(attachment);
-        CallerContext caller = new CallerContext(userId, roles, userName, userEmail, procedureLabel);
+        CallerContext caller = new CallerContext(userId, roles, userName, userEmail, procedureLabel, procedureSlaDays);
         MunicipalRequest created = creation.create(body, caller, image);
         return ResponseEntity.status(HttpStatus.CREATED).body(RequestView.of(created, caller));
     }

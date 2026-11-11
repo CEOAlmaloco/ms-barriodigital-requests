@@ -8,6 +8,12 @@ server:
     include-message: always
 
 spring:
+  # outbox_events la crea un script, como en Oracle: corre después de que Hibernate arma el esquema de H2.
+  jpa:
+    defer-datasource-initialization: true
+  sql:
+    init:
+      schema-locations: classpath:db/h2-outbox-events.sql
   rabbitmq:
     addresses: 203.0.113.1:5672
     username: barriodigital

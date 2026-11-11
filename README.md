@@ -80,6 +80,7 @@ Contrato alineado con el formulario del Vecino (tipo + descripción + dirección
 | `solicitanteNombre` | Header `X-User-Name` solo en el POST, codificado en URL (UTF-8) por el BFF. Se decodifica y se trunca a 200, igual que el `actor_name` del historial. Si el header viene vacío, mal codificado o con caracteres de control, queda el `solicitanteId`; si tampoco hay id, `Sin nombre`. GET y PUT de estado no lo recalculan |
 | `solicitanteEmail` | Header `X-User-Email` solo en el POST. Se guarda tal cual, recortado. Si no viene o viene en blanco, queda `null` (también los trámites anteriores a esta columna). GET y PUT de estado no lo recalculan. EP2-20 del BFF es quien debe reenviar ese header |
 | `procedureLabel` | Header `X-Procedure-Label` solo en el POST, codificado en URL (UTF-8). El BFF lo arma con el `label` de catalog. Se decodifica, se recorta y se trunca a 120. Si no viene, viene en blanco o no se puede decodificar, queda `null` sin error (también los trámites anteriores a esta columna). GET y PUT de estado no lo recalculan |
+| `slaBusinessDays` | Header `X-Procedure-Sla-Days` solo en el POST: el plazo del tipo en días hábiles, que el BFF toma de catalog (EP3-06). Es un snapshot: editar el tipo después no lo cambia. Sin header, `null` (tipo sin plazo, y trámites anteriores a EP3-31). Un valor que no es un entero de 1 a 120 queda `null` con un `WARN` en el log, sin bloquear el alta. Lo ven los cuatro roles |
 | Roles | Header `X-User-Roles` con **exactamente uno** de `Vecino`, `Funcionario`, `Admin` o `Auditor` (con o sin `ROLE_`). Sin rol, 403 `No tienes un rol asignado en BarrioDigital`; con más de uno, 403 `El usuario debe tener un solo rol`. `/api/requests/meta/**` queda fuera porque el BFF la llama sin identidad |
 | `hasAssignee`, `assigneeId`, `assigneeName` | El responsable del trámite. El Vecino recibe solo `hasAssignee`; `assigneeId` y `assigneeName` le llegan `null`. Ver [Asignación](#asignación-y-operación-por-rol-ep3-29) |
 
@@ -105,6 +106,7 @@ curl -X POST http://localhost:8081/api/requests `
   -H "X-User-Name: Alex%20Ampuero" `
   -H "X-User-Email: vecino@example.com" `
   -H "X-Procedure-Label: Bache%20en%20calle" `
+  -H "X-Procedure-Sla-Days: 5" `
   -d "{\"description\":\"Hueco frente al 123\",\"procedureType\":\"bache\",\"address\":\"Plaza Los Heroes\"}"
 
 # Listar (abiertos de septiembre que mencionan "bache", segunda página de 10)
@@ -323,6 +325,60 @@ junto con el primer commit de EP3-45, en el que el BFF deja pasar la página. Ha
 adaptador temporal que pide `size=50` y lee `content`. Mientras tanto, con más de 50 trámites el listado se ve
 incompleto.
 
+## Eventos de Kafka: outbox (EP3-31)
+
+Implementa la mitad de requests de los contratos EP3-01 (eventos) y EP3-02 (publicación) de
+`barriodigital-infra/docs/decisiones.md`. Cada hecho del trámite se guarda como una fila de `outbox_events` **en la
+misma transacción** que el cambio y su marca del expediente: o quedan los tres, o ninguno. Un rollback, una falla al
+escribir el outbox o una transición rechazada (409) no dejan evento. El relay que publica en `requests.events` es
+EP3-32: hasta entonces, los eventos esperan en la tabla y después salen en orden.
+
+| Operación | Evento | Comandos de RabbitMQ |
+|---|---|---|
+| Alta | `request.created` | `certificate.receipt` |
+| Cambio de estado | `request.status-changed` | Los de la sección de eventos, según la transición |
+| Gestión de contacto | `request.contact-logged` | Ninguno |
+| Toma, asignación o reasignación | `request.assigned` | Ninguno |
+
+- `DomainEventRecorder` (paquete `messaging`) arma el sobre de EP3-01 desde la fila del expediente: mismo instante,
+  mismo actor y mismo rol. Exige la transacción del cambio (`Propagation.MANDATORY`) y no importa clases de Kafka.
+- **Un evento por operación.** La primera asignación guarda dos marcas (la interna y el hito público), pero un solo
+  `request.assigned`: el hito no genera evento (EP3-05, sección 7).
+- **El JSON** se guarda sin `sequence`, que agrega el relay desde `event_sequence`. Los campos opcionales van siempre,
+  con `null` si no aplican. No viajan el correo, la dirección textual ni la nota de la gestión (EP3-01, sección 8).
+  `interventionReason` va en `status-changed` y `contact-logged`, `null` si el actor no es Admin.
+- **`traceId`:** el evento y los comandos de RabbitMQ del mismo cambio comparten el mismo. RabbitMQ sigue publicando
+  después del commit, igual que antes.
+- **`actor_role`:** columna nueva de `request_activity` con el único rol de quien actuó (EP3-04, sección 4). El hito
+  sin actor y las filas anteriores a EP3-31 quedan en `null`. `/actividad` lo entrega como `actorRole` solo al staff;
+  el Vecino lo recibe `null`, también en sus propias marcas (EP3-04, sección 6.2).
+- **Instantes:** Oracle y H2 guardan microsegundos y redondean el resto. Los instantes del alta, el cambio de estado,
+  la gestión y la asignación se truncan a microsegundos al nacer (`StoredInstant`), así el `occurredAt` del evento
+  es exactamente el `occurred_at` de la marca.
+
+### Antes de desplegar: `outbox-events.sql`
+
+`ddl-auto: update` no sabe crear `event_sequence` como identity con `ORDER`. Si Hibernate crea la tabla primero, la
+crea sin identity y la primera alta falla con ORA-01400. Por eso, **una vez y antes del primer arranque con
+EP3-31**, también en una base nueva:
+
+1. **Correr** `src/main/resources/db/outbox-events.sql` con SQLcl, SQL*Plus o el worksheet de SQL Developer
+   ("Ejecutar script"). Si Hibernate ya alcanzó a crear la tabla sin identity y vacía, el script la elimina y la
+   recrea. Si la tabla ya tiene identity o filas, se detiene sin tocarla.
+2. **Revisar la comprobación final:** `event_sequence` con `ORDER_FLAG: Y` en `identity_options`,
+   `pk_outbox_events`, `uk_outbox_events_sequence` e `idx_outbox_pending`.
+3. **Desplegar y levantar requests.** Hibernate agrega solo las columnas nullable `actor_role` y `sla_business_days`.
+
+En los tests, `src/test/resources/db/h2-outbox-events.sql` crea la misma tabla en H2 después de Hibernate, sin
+`ORDER`, que H2 no acepta. Los tests no validan el `ORDER` de Oracle.
+
+**Límites conocidos**
+
+1. **Trámites anteriores a EP3-31:** no tienen eventos, así que report y audit parten desde el despliegue
+   (EP3-06, límite 1). Un backfill con eventos marcados como reconstruidos es una mejora futura.
+2. **Hasta EP3-32 nada se publica en Kafka:** la tabla crece con eventos pendientes. El relay los publica en orden, y
+   la limpieza y el health `outbox` también son de EP3-32.
+
 ## Concurrencia de estado (EP1.5-18)
 
 EP1.5-18 protege `changeStatus()` con `findByIdForUpdate()` y bloqueo pesimista de escritura por trámite. La misma transacción lee, valida la transición, modifica y persiste, para todas las transiciones. Dos admisiones del mismo trámite no validan simultáneamente INGRESADO: una completa y la otra recibe el 409 existente al observar ADMITIDO. También se serializan admisión y rechazo; trámites distintos no usan un bloqueo global. Los errores de bloqueo/persistencia no se convierten en conflictos de negocio.
@@ -346,13 +402,15 @@ o del certificado. Los certificados no requieren correo.
 El productor conserva los null; Notify usa el código como respaldo de presentación de una etiqueta null.
 
 Cada alta o cambio captura un único snapshot inmutable y registra un solo callback posterior al commit.
-Cada par comparte ese snapshot, el `correlationId` del trámite y un `traceId` de la operación; cada mensaje tiene su propio
+Cada par comparte ese snapshot, el `correlationId` del trámite y el `traceId` de la operación, que es también el del evento de
+Kafka (EP3-31); cada mensaje tiene su propio
 `eventId` y su instante de publicación. Los workers no reciben entidades JPA ni consultan repositorios.
 
 Un fallo del broker o rechazo del ejecutor conserva HTTP 201 del alta o HTTP 200 del cambio ya persistido.
 Un fallo de persistencia no se oculta ni se convierte en un alta exitosa.
 Mensajes persistentes, mandatory y confirms aportan diagnóstico, no acreditan procesamiento ni recuperación.
-Sin outbox ni reintentos del productor, una caída del broker, saturación o caída del proceso puede perder el evento.
+RabbitMQ no usa el outbox de EP3-31, que es solo para Kafka: sin reintentos del productor, una caída del broker,
+saturación o caída del proceso puede perder el comando.
 Cada publicación se encola por separado y el fallo de una no suprime el intento de la otra. Se admite entrega
 parcial; no se garantiza atomicidad del par ni orden de llegada o procesamiento.
 
@@ -385,4 +443,4 @@ registrados desde los workers. Esta comprobación no valida Oracle ni el desplie
 
 ## Qué sigue
 
-- Recuperación durable de publicaciones, fuera del alcance actual sin outbox.
+- Recuperación durable de los comandos de RabbitMQ: el outbox de EP3-31 cubre solo los eventos de Kafka.
