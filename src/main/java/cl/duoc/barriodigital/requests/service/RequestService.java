@@ -46,6 +46,13 @@ public class RequestService {
     /** Tope de las columnas solicitante_nombre y actor_name. */
     static final int NAME_MAX = 200;
 
+    /** Valores del filtro assignee del listado. */
+    static final String ASSIGNEE_ME = "me";
+    static final String ASSIGNEE_NONE = "none";
+
+    /** Tope de intervention_reason, igual que rejectionReason. */
+    static final int INTERVENTION_REASON_MAX = 500;
+
     private final MunicipalRequestRepository repository;
     private final RequestActivityRepository activity;
     private final RequestAttachmentRepository attachments;
@@ -80,6 +87,10 @@ public class RequestService {
             Instant createdAt
     ) {
         requireUserId(caller);
+        // Solo el Vecino crea trámites (EP3-04, sección 2). El BFF aplica la misma regla.
+        if (!caller.isVecino()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo un Vecino puede crear un tramite");
+        }
 
         String procedureType = ProcedureTypes.normalize(body.procedureType());
         if (!ProcedureTypes.hasValidFormat(procedureType)) {
@@ -158,22 +169,37 @@ public class RequestService {
     /**
      * Lista trámites. Quien no es personal solo ve los suyos.
      * from y to son días civiles en America/Santiago y los dos se incluyen completos.
+     * assignee (solo staff, EP3-05 sección 8): me son los trámites de quien llama y none los que no tienen responsable.
+     * Para el Admin y el Auditor, me es vacío, porque nunca son responsables.
      */
     @Transactional(readOnly = true)
     public List<MunicipalRequest> list(
             RequestStatus status,
             LocalDate from,
             LocalDate to,
+            String assignee,
             CallerContext caller
     ) {
         requireUserId(caller);
+        String assigneeId = null;
+        String unassigned = null;
+        if (assignee != null && !assignee.isBlank()) {
+            if (!caller.isStaff()) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "El filtro assignee es solo para staff");
+            }
+            switch (assignee.trim()) {
+                case ASSIGNEE_ME -> assigneeId = caller.userId().trim();
+                case ASSIGNEE_NONE -> unassigned = ASSIGNEE_NONE;
+                default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "assignee debe ser me o none");
+            }
+        }
 
         Instant fromInstant = from == null ? null : startOfCivilDay(from);
         // Inicio del día siguiente, sin incluirlo: cubre el día entero, con microsegundos y cambios de hora.
         Instant beforeInstant = to == null ? null : startOfCivilDay(to.plusDays(1));
 
         String ownerFilter = caller.mustFilterOwnRequests() ? caller.userId().trim() : null;
-        return repository.search(status, fromInstant, beforeInstant, ownerFilter);
+        return repository.search(status, fromInstant, beforeInstant, ownerFilter, assigneeId, unassigned);
     }
 
     /** Primer instante del día en Chile. Si ese día la medianoche no existe por el cambio de hora, es la 01:00. */
@@ -182,13 +208,22 @@ public class RequestService {
     }
 
     /**
-     * Cambia el estado. Solo un Funcionario puede hacerlo.
+     * Cambia el estado. Lo hace el Funcionario, o el Admin como intervención con interventionReason (EP3-04, sección 3).
      * Si el estado es RECHAZADO, el motivo es obligatorio y no supera 500 caracteres. Bloquea la fila para que dos cambios no se pisen.
+     * Orden de errores de EP3-04, sección 5: 403 por rol, 400 por body, 404, 403 si el Funcionario no es el responsable
+     * y 409.
      */
     @Transactional
-    public MunicipalRequest changeStatus(String id, String rawStatus, String rejectionReason, CallerContext caller) {
+    public MunicipalRequest changeStatus(
+            String id,
+            String rawStatus,
+            String rejectionReason,
+            String interventionReason,
+            CallerContext caller
+    ) {
         requireUserId(caller);
-        if (!caller.isFuncionario()) {
+        // El texto del 403 se mantiene: el BFF y el frontend lo comparan hasta que EP3-67 traiga códigos estables.
+        if (!caller.isFuncionario() && !caller.isAdmin()) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo un Funcionario puede cambiar el estado");
         }
 
@@ -206,10 +241,12 @@ public class RequestService {
             }
             rejectionReason = reason;
         }
+        String intervention = interventionReason(caller, interventionReason);
 
         // El bloqueo cubre lectura, validación y escritura de cualquier transición del mismo trámite.
         MunicipalRequest found = repository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado"));
+        requireResponsible(found, caller);
 
         if (!RequestTransitions.isAllowed(found.getStatus(), target)) {
             throw new ResponseStatusException(
@@ -228,7 +265,8 @@ public class RequestService {
                 snapshotName(caller.userName(), caller.userId()),
                 previous,
                 saved.getStatus(),
-                target == RequestStatus.RECHAZADO ? rejectionReason : null
+                target == RequestStatus.RECHAZADO ? rejectionReason : null,
+                intervention
         ));
         publishStatusEventsAfterCommit(previous, saved);
         return saved;
@@ -303,13 +341,42 @@ public class RequestService {
      * Si el header viene vacío, mal codificado o con caracteres de control, usa el id. Si tampoco hay id, queda "Sin nombre".
      * No supera 200 caracteres.
      */
-    static String snapshotName(String headerName, String solicitanteId) {
+    public static String snapshotName(String headerName, String solicitanteId) {
         String fromHeader = truncate(decodeHeader(headerName), NAME_MAX);
         if (fromHeader != null) {
             return fromHeader;
         }
         String fromId = blankToNull(solicitanteId);
         return fromId != null ? fromId : "Sin nombre";
+    }
+
+    /**
+     * Solo el responsable opera (EP3-04, sección 3). Se llama con la fila ya bloqueada, en la misma transacción
+     * que la operación: así una reasignación simultánea no deja pasar al responsable anterior. El Admin opera
+     * cualquier trámite como intervención.
+     */
+    static void requireResponsible(MunicipalRequest request, CallerContext caller) {
+        if (caller.isFuncionario() && !caller.userId().trim().equals(request.getAssigneeId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo el responsable del tramite puede operarlo");
+        }
+    }
+
+    /**
+     * Motivo de intervención que queda guardado (EP3-04, sección 3). Es obligatorio para el Admin, hasta 500 caracteres
+     * después de recortar. Para el Funcionario se ignora, como rejectionReason fuera de un rechazo.
+     */
+    static String interventionReason(CallerContext caller, String raw) {
+        if (!caller.isAdmin()) {
+            return null;
+        }
+        String reason = blankToNull(raw);
+        if (reason == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "interventionReason es obligatorio para el Admin");
+        }
+        if (reason.length() > INTERVENTION_REASON_MAX) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "interventionReason no puede superar 500 caracteres");
+        }
+        return reason;
     }
 
     /** Correo que queda guardado. Si el header viene vacío, queda null. No se inventa uno. */

@@ -88,7 +88,7 @@ class RequestStatusEventsTransactionTest {
                 return null;
             }).when(publisher).publish(anyString(), eq(initial.getId()), any(), any(UUID.class));
             new TransactionTemplate(transactions).executeWithoutResult(tx -> {
-                service.changeStatus(initial.getId(), target.name(), null, funcionario);
+                service.changeStatus(initial.getId(), target.name(), null, null, funcionario);
                 verifyNoInteractions(publisher);
             });
             verifyEvents(type, initial);
@@ -103,7 +103,7 @@ class RequestStatusEventsTransactionTest {
     void rollbackExteriorNoPublica(RequestStatus from, String target) {
         MunicipalRequest initial = create(from);
         new TransactionTemplate(transactions).executeWithoutResult(tx -> {
-            service.changeStatus(initial.getId(), target, null, funcionario);
+            service.changeStatus(initial.getId(), target, null, null, funcionario);
             tx.setRollbackOnly();
         });
         verifyNoInteractions(publisher);
@@ -118,7 +118,7 @@ class RequestStatusEventsTransactionTest {
                 + initial.getId() + "' or status <> '" + target + "')");
         try {
             assertThrows(RuntimeException.class, () -> new TransactionTemplate(transactions).executeWithoutResult(tx -> {
-                service.changeStatus(initial.getId(), target, null, funcionario);
+                service.changeStatus(initial.getId(), target, null, null, funcionario);
                 verifyNoInteractions(publisher);
                 // El UPDATE sigue pendiente: la restricción se evalúa al hacer flush durante el commit.
             }));
@@ -135,7 +135,7 @@ class RequestStatusEventsTransactionTest {
     void snapshotNoDependeDelObjetoQueRetornoElServicio(RequestStatus from, String target, String type) {
         MunicipalRequest initial = create(from);
         new TransactionTemplate(transactions).executeWithoutResult(tx -> {
-            MunicipalRequest changed = service.changeStatus(initial.getId(), target, null, funcionario);
+            MunicipalRequest changed = service.changeStatus(initial.getId(), target, null, null, funcionario);
             ReflectionTestUtils.setField(changed, "procedureLabel", "Etiqueta posterior");
             ReflectionTestUtils.setField(changed, "solicitanteEmail", "posterior@example.com");
             ReflectionTestUtils.setField(changed, "address", "Direccion posterior");
@@ -150,7 +150,7 @@ class RequestStatusEventsTransactionTest {
         MunicipalRequest initial = create(from);
         doThrow(new IllegalStateException("fallo controlado de entrega"))
                 .when(publisher).publish(eq(type), anyString(), any(), any(UUID.class));
-        assertDoesNotThrow(() -> service.changeStatus(initial.getId(), target.name(), null, funcionario));
+        assertDoesNotThrow(() -> service.changeStatus(initial.getId(), target.name(), null, null, funcionario));
         assertEquals(target, repository.findById(initial.getId()).orElseThrow().getStatus());
         verifyEvents(type, initial);
     }
@@ -158,15 +158,15 @@ class RequestStatusEventsTransactionTest {
     @Test
     void repeticionYSaltoInvalidoNoPublicanElPar() {
         MunicipalRequest initial = create(RequestStatus.EN_GESTION);
-        service.changeStatus(initial.getId(), "EN_TERRENO", null, funcionario);
+        service.changeStatus(initial.getId(), "EN_TERRENO", null, null, funcionario);
         verifyEvents("crew.ticket", initial);
         clearInvocations(publisher);
         ResponseStatusException repeated = assertThrows(ResponseStatusException.class,
-                () -> service.changeStatus(initial.getId(), "EN_TERRENO", null, funcionario));
+                () -> service.changeStatus(initial.getId(), "EN_TERRENO", null, null, funcionario));
         assertEquals(409, repeated.getStatusCode().value());
         MunicipalRequest ingresado = create(RequestStatus.INGRESADO);
         ResponseStatusException invalid = assertThrows(ResponseStatusException.class,
-                () -> service.changeStatus(ingresado.getId(), "EN_TERRENO", null, funcionario));
+                () -> service.changeStatus(ingresado.getId(), "EN_TERRENO", null, null, funcionario));
         assertEquals(409, invalid.getStatusCode().value());
         verifyNoInteractions(publisher);
         assertEquals(RequestStatus.EN_TERRENO, repository.findById(initial.getId()).orElseThrow().getStatus());
@@ -215,7 +215,8 @@ class RequestStatusEventsTransactionTest {
         AtomicReference<String> id = new AtomicReference<>();
         try {
             assertThrows(RuntimeException.class, () -> new TransactionTemplate(transactions).executeWithoutResult(tx -> {
-                MunicipalRequest saved = service.create(new CreateRequestDto("alta-invalida-ep224", "bache", "dir"), funcionario, null, NOW);
+                MunicipalRequest saved = service.create(new CreateRequestDto("alta-invalida-ep224", "bache", "dir"),
+                        new CallerContext("vecino", "Vecino"), null, NOW);
                 id.set(saved.getId());
                 verifyNoInteractions(publisher);
                 // El INSERT pendiente falla durante el flush del commit, después de retornar create.
@@ -260,7 +261,7 @@ class RequestStatusEventsTransactionTest {
     void lecturasNoPublican() {
         MunicipalRequest initial = create(RequestStatus.INGRESADO);
         service.getById(initial.getId(), funcionario);
-        service.list(null, null, null, funcionario);
+        service.list(null, null, null, null, funcionario);
         verifyNoInteractions(publisher);
     }
 
@@ -278,6 +279,7 @@ class RequestStatusEventsTransactionTest {
         MunicipalRequest request = new MunicipalRequest("t", "d", "bache", "dir", "vecino", "Vecino",
                 "vecino@example.com", "Etiqueta guardada");
         request.assignFolio(TestFolios.unique());
+        request.assignTo("func", "Funcionario");
         request.setStatus(status);
         return repository.saveAndFlush(request);
     }

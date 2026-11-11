@@ -52,21 +52,21 @@ class RequestListCivilDayTest {
 
     @Test
     void unDiaIncluyeLaNocheYElUltimoSegundoEnHoraDeChile() {
-        List<MunicipalRequest> found = service.list(null, DAY, DAY, FUNCIONARIO);
+        List<MunicipalRequest> found = service.list(null, DAY, DAY, null, FUNCIONARIO);
 
         assertEquals(List.of("ultimoSegundo", "noche", "inicio"), titles(found));
     }
 
     @Test
     void soloHastaIncluyeElDiaCompleto() {
-        List<MunicipalRequest> found = service.list(null, null, DAY, FUNCIONARIO);
+        List<MunicipalRequest> found = service.list(null, null, DAY, null, FUNCIONARIO);
 
         assertEquals(List.of("ultimoSegundo", "noche", "inicio", "antes"), titles(found));
     }
 
     @Test
     void soloDesdeEmpiezaALaMedianocheDeChile() {
-        List<MunicipalRequest> found = service.list(null, DAY.plusDays(1), null, FUNCIONARIO);
+        List<MunicipalRequest> found = service.list(null, DAY.plusDays(1), null, null, FUNCIONARIO);
 
         assertEquals(List.of("despues"), titles(found));
     }

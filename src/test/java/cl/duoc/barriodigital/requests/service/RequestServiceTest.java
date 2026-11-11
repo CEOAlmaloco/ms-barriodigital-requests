@@ -109,12 +109,13 @@ class RequestServiceTest {
         MunicipalRequest stored = new MunicipalRequest("titulo ajeno", "d", "nuevo_tipo", "direccion original",
                 "vecino", "Vecino", "vecino@example.com", "Etiqueta original");
         stored.setStatus(from);
-        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(responsible(stored)));
         when(repository.save(stored)).thenReturn(stored);
         RequestEventPayload expected = new RequestEventPayload(stored.getId(), stored.getFolio(), "nuevo_tipo", "Etiqueta original",
                 "direccion original", "vecino@example.com");
 
         requestService.changeStatus("id", target, null,
+                null,
                 new CallerContext("func", "Funcionario", "Funcionario", "func@example.com", "Otra etiqueta"));
         verifyNoInteractions(publisher);
         assertEquals(1, TransactionSynchronizationManager.getSynchronizations().size());
@@ -138,9 +139,9 @@ class RequestServiceTest {
             "EN_TERRENO,RESUELTO,email.resolved"})
     void publicaTambienLosSnapshotsNulos(RequestStatus from, String target, String type) {
         MunicipalRequest stored = requestWithStatus(from);
-        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(responsible(stored)));
         when(repository.save(stored)).thenReturn(stored);
-        requestService.changeStatus("id", target, null, new CallerContext("func", "Funcionario"));
+        requestService.changeStatus("id", target, null, null, new CallerContext("func", "Funcionario"));
         TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
         ArgumentCaptor<UUID> trace = ArgumentCaptor.forClass(UUID.class);
         verify(publisher).publish(eq(type), eq(stored.getId()),
@@ -157,9 +158,10 @@ class RequestServiceTest {
     void noPublicaInmediatamenteSinTransaccion(RequestStatus from, String target) {
         TransactionSynchronizationManager.clear();
         MunicipalRequest stored = requestWithStatus(from);
-        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(responsible(stored)));
         when(repository.save(stored)).thenReturn(stored);
         assertThrows(IllegalStateException.class, () -> requestService.changeStatus("id", target, null,
+                null,
                 new CallerContext("func", "Funcionario")));
         verifyNoInteractions(publisher);
     }
@@ -169,9 +171,9 @@ class RequestServiceTest {
             "ADMITIDO,RECHAZADO", "EN_GESTION,RECHAZADO", "EN_TERRENO,RECHAZADO"})
     void otrasTransicionesNoRegistranEventos(RequestStatus from, String target) {
         MunicipalRequest stored = requestWithStatus(from);
-        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(responsible(stored)));
         when(repository.save(stored)).thenReturn(stored);
-        requestService.changeStatus("id", target, "motivo", new CallerContext("func", "Funcionario"));
+        requestService.changeStatus("id", target, "motivo", null, new CallerContext("func", "Funcionario"));
         assertTrue(TransactionSynchronizationManager.getSynchronizations().isEmpty());
         verifyNoInteractions(publisher);
     }
@@ -180,9 +182,9 @@ class RequestServiceTest {
     @CsvSource({"ADMITIDO,ADMITIDO", "EN_TERRENO,EN_TERRENO", "INGRESADO,EN_TERRENO",
             "RESUELTO,RESUELTO", "ADMITIDO,RESUELTO"})
     void transicionRechazadaNoRegistraEventos(RequestStatus from, String target) {
-        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(requestWithStatus(from)));
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(responsible(requestWithStatus(from))));
         ResponseStatusException ex = assertThrows(ResponseStatusException.class,
-                () -> requestService.changeStatus("id", target, null, new CallerContext("func", "Funcionario")));
+                () -> requestService.changeStatus("id", target, null, null, new CallerContext("func", "Funcionario")));
         assertEquals(409, ex.getStatusCode().value());
         assertTrue(TransactionSynchronizationManager.getSynchronizations().isEmpty());
         verifyNoInteractions(publisher);
@@ -193,11 +195,11 @@ class RequestServiceTest {
     void excepcionInesperadaDelPrimerPublicadorNoSuprimeElSegundo(
             RequestStatus from, String target, String first, String second) {
         MunicipalRequest stored = requestWithStatus(from);
-        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(responsible(stored)));
         when(repository.save(stored)).thenReturn(stored);
         doThrow(new IllegalStateException("fallo controlado"))
                 .when(publisher).publish(eq(first), any(), any(), any(UUID.class));
-        requestService.changeStatus("id", target, null, new CallerContext("func", "Funcionario"));
+        requestService.changeStatus("id", target, null, null, new CallerContext("func", "Funcionario"));
         TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
         ArgumentCaptor<UUID> trace = ArgumentCaptor.forClass(UUID.class);
         ArgumentCaptor<Object> snapshot = ArgumentCaptor.forClass(Object.class);
@@ -478,13 +480,14 @@ class RequestServiceTest {
         MunicipalRequest stored = new MunicipalRequest(
                 "t", "d", "bache", "dir", "oid-1", "Alex Ampuero", "vecino@example.com"
         );
-        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(stored));
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(responsible(stored)));
 
         MunicipalRequest updated = requestService.changeStatus(
                 "id-1",
                 "ADMITIDO",
                 null,
-                new CallerContext("func-1", "Funcionario", "Funcionario Nuevo", "func@example.com")
+                null,
+                new CallerContext("func", "Funcionario", "Funcionario Nuevo", "func@example.com")
         );
 
         assertEquals(RequestStatus.ADMITIDO, updated.getStatus());
@@ -544,13 +547,14 @@ class RequestServiceTest {
     void changeStatusGuardaElNombreDecodificadoDelFuncionarioEnElHistorial() {
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
         MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-1", "Alex Ampuero");
-        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(stored));
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(responsible(stored)));
 
         requestService.changeStatus(
                 "id-1",
                 "ADMITIDO",
                 null,
-                new CallerContext("func-1", "Funcionario", "Jos%C3%A9%20Pe%C3%B1a")
+                null,
+                new CallerContext("func", "Funcionario", "Jos%C3%A9%20Pe%C3%B1a")
         );
 
         ArgumentCaptor<RequestActivity> event = ArgumentCaptor.forClass(RequestActivity.class);
@@ -588,19 +592,19 @@ class RequestServiceTest {
             "2026-04-04, 2026-04-04T03:00:00Z, 2026-04-05T04:00:00Z"
     })
     void listFiltraDiasCompletosEnHoraDeChileInclusoConCambioDeHora(LocalDate day, String from, String before) {
-        requestService.list(null, day, day, new CallerContext("func-1", "Funcionario"));
+        requestService.list(null, day, day, null, new CallerContext("func", "Funcionario"));
 
-        verify(repository).search(isNull(), eq(Instant.parse(from)), eq(Instant.parse(before)), isNull());
+        verify(repository).search(isNull(), eq(Instant.parse(from)), eq(Instant.parse(before)), isNull(), isNull(), isNull());
     }
 
     @Test
     void getByIdYListadoDevuelvenElNombreYaGuardado() {
         MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-1", "Alex Ampuero");
         when(repository.findById("id-1")).thenReturn(Optional.of(stored));
-        when(repository.search(isNull(), isNull(), isNull(), eq("oid-1"))).thenReturn(List.of(stored));
+        when(repository.search(isNull(), isNull(), isNull(), eq("oid-1"), isNull(), isNull())).thenReturn(List.of(stored));
 
         MunicipalRequest byId = requestService.getById("id-1", new CallerContext("oid-1", "Vecino", "Otro"));
-        List<MunicipalRequest> listed = requestService.list(null, null, null, new CallerContext("oid-1", "Vecino", "Otro"));
+        List<MunicipalRequest> listed = requestService.list(null, null, null, null, new CallerContext("oid-1", "Vecino", "Otro"));
 
         assertEquals("Alex Ampuero", byId.getSolicitanteNombre());
         assertEquals("Alex Ampuero", listed.get(0).getSolicitanteNombre());
@@ -610,13 +614,14 @@ class RequestServiceTest {
     void changeStatusNoPisaElNombreGuardado() {
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
         MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-1", "Alex Ampuero");
-        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(stored));
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(responsible(stored)));
 
         MunicipalRequest updated = requestService.changeStatus(
                 "id-1",
                 "ADMITIDO",
                 null,
-                new CallerContext("func-1", "Funcionario", "Funcionario Nuevo")
+                null,
+                new CallerContext("func", "Funcionario", "Funcionario Nuevo")
         );
 
         assertEquals(RequestStatus.ADMITIDO, updated.getStatus());
@@ -695,26 +700,27 @@ class RequestServiceTest {
 
     @Test
     void listVecinoFuerzaFiltroPorSolicitante() {
-        when(repository.search(eq(RequestStatus.INGRESADO), any(), any(), eq("mi-oid")))
+        when(repository.search(eq(RequestStatus.INGRESADO), any(), any(), eq("mi-oid"), isNull(), isNull()))
                 .thenReturn(List.of());
 
         requestService.list(
                 RequestStatus.INGRESADO,
                 LocalDate.of(2026, 9, 1),
                 LocalDate.of(2026, 9, 13),
+                null,
                 new CallerContext("mi-oid", "Vecino")
         );
 
-        verify(repository).search(eq(RequestStatus.INGRESADO), any(), any(), eq("mi-oid"));
+        verify(repository).search(eq(RequestStatus.INGRESADO), any(), any(), eq("mi-oid"), isNull(), isNull());
     }
 
     @Test
     void listFuncionarioNoFiltraPorSolicitante() {
-        when(repository.search(isNull(), isNull(), isNull(), isNull())).thenReturn(List.of());
+        when(repository.search(isNull(), isNull(), isNull(), isNull(), isNull(), isNull())).thenReturn(List.of());
 
-        requestService.list(null, null, null, new CallerContext("func-1", "Funcionario"));
+        requestService.list(null, null, null, null, new CallerContext("func", "Funcionario"));
 
-        verify(repository).search(isNull(), isNull(), isNull(), isNull());
+        verify(repository).search(isNull(), isNull(), isNull(), isNull(), isNull(), isNull());
     }
 
     @Test
@@ -727,7 +733,7 @@ class RequestServiceTest {
     @Test
     void changeStatusAceptaLasOchoTransicionesValidas() {
         when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        CallerContext funcionario = new CallerContext("func-1", "Funcionario");
+        CallerContext funcionario = new CallerContext("func", "Funcionario");
 
         assertStatusChange(RequestStatus.INGRESADO, "ADMITIDO", null, RequestStatus.ADMITIDO, funcionario);
         assertStatusChange(RequestStatus.INGRESADO, "RECHAZADO", "Fuera de comuna", RequestStatus.RECHAZADO, funcionario);
@@ -741,7 +747,7 @@ class RequestServiceTest {
 
     @Test
     void changeStatusRechazaUnaInvalidaPorCadaNoTerminal() {
-        CallerContext funcionario = new CallerContext("func-1", "Funcionario");
+        CallerContext funcionario = new CallerContext("func", "Funcionario");
         assertConflict(RequestStatus.INGRESADO, "EN_TERRENO", funcionario);
         assertConflict(RequestStatus.ADMITIDO, "RESUELTO", funcionario);
         assertConflict(RequestStatus.EN_GESTION, "ADMITIDO", funcionario);
@@ -750,7 +756,7 @@ class RequestServiceTest {
 
     @Test
     void changeStatusTerminalesNoSalen() {
-        CallerContext funcionario = new CallerContext("func-1", "Funcionario");
+        CallerContext funcionario = new CallerContext("func", "Funcionario");
         assertConflict(RequestStatus.RESUELTO, "RECHAZADO", funcionario);
         assertConflict(RequestStatus.RECHAZADO, "ADMITIDO", funcionario);
     }
@@ -758,29 +764,161 @@ class RequestServiceTest {
     @Test
     void changeStatusRechazadoSinMotivoEs400() {
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
-                requestService.changeStatus("id-1", "RECHAZADO", "   ", new CallerContext("func-1", "Funcionario")));
+                requestService.changeStatus("id-1", "RECHAZADO", "   ", null, new CallerContext("func", "Funcionario")));
         assertEquals(400, ex.getStatusCode().value());
     }
 
     @Test
     void changeStatusEnumInvalidoEs400No500() {
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
-                requestService.changeStatus("id-1", "FOO", null, new CallerContext("func-1", "Funcionario")));
+                requestService.changeStatus("id-1", "FOO", null, null, new CallerContext("func", "Funcionario")));
         assertEquals(400, ex.getStatusCode().value());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", "   "})
+    void changeStatusDelAdminSinMotivoResponde400AntesDeBuscarElTramite(String reason) {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> requestService.changeStatus(
+                "id-1", "ADMITIDO", null, reason.isEmpty() ? null : reason, new CallerContext("admin-1", "Admin")));
+
+        assertEquals(400, ex.getStatusCode().value());
+        assertEquals("interventionReason es obligatorio para el Admin", ex.getReason());
+        verify(repository, never()).findByIdForUpdate(any());
+    }
+
     @Test
-    void changeStatusAdminNoPuede() {
+    void changeStatusDelAdminConMotivoGuardaLaIntervencionFueraDelSummary() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-1", "Alex Ampuero");
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(responsible(stored)));
+
+        requestService.changeStatus("id-1", "RECHAZADO", "Duplicado", "  Reclamo en la OIRS  ",
+                new CallerContext("admin-1", "Admin", "Admin%20Uno"));
+
+        ArgumentCaptor<RequestActivity> mark = ArgumentCaptor.forClass(RequestActivity.class);
+        verify(activity).save(mark.capture());
+        assertEquals("Reclamo en la OIRS", mark.getValue().getInterventionReason());
+        assertEquals("Duplicado", mark.getValue().getReason());
+        assertEquals(false, mark.getValue().getSummary().contains("OIRS"));
+        assertEquals("Admin Uno", mark.getValue().getActorName());
+    }
+
+    @Test
+    void changeStatusDelAdminConMotivoDeMasDe500Responde400() {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () -> requestService.changeStatus(
+                "id-1", "ADMITIDO", null, "x".repeat(501), new CallerContext("admin-1", "Admin")));
+
+        assertEquals("interventionReason no puede superar 500 caracteres", ex.getReason());
+    }
+
+    @Test
+    void changeStatusDelFuncionarioIgnoraElMotivoDeIntervencion() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-1", "Alex Ampuero");
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(responsible(stored)));
+
+        requestService.changeStatus("id-1", "ADMITIDO", null, "no aplica", new CallerContext("func", "Funcionario"));
+
+        ArgumentCaptor<RequestActivity> mark = ArgumentCaptor.forClass(RequestActivity.class);
+        verify(activity).save(mark.capture());
+        assertNull(mark.getValue().getInterventionReason());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Vecino", "Auditor"})
+    void changeStatusDelVecinoODelAuditorResponde403ConElTextoQueComparaElBff(String role) {
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
-                requestService.changeStatus("id-1", "ADMITIDO", null, new CallerContext("admin-1", "Admin")));
+                requestService.changeStatus("id-1", "ADMITIDO", null, null, new CallerContext("u-1", role)));
+
         assertEquals(403, ex.getStatusCode().value());
+        assertEquals("Solo un Funcionario puede cambiar el estado", ex.getReason());
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"otro-func", ""})
+    void elFuncionarioQueNoEsElResponsableNoCambiaElEstado(String assignee) {
+        MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-1");
+        if (!assignee.isEmpty()) {
+            stored.assignTo(assignee, "Otro");
+        }
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(stored));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                requestService.changeStatus("id-1", "ADMITIDO", null, null, new CallerContext("func", "Funcionario")));
+
+        assertEquals(403, ex.getStatusCode().value());
+        assertEquals("Solo el responsable del tramite puede operarlo", ex.getReason());
+        assertEquals(RequestStatus.INGRESADO, stored.getStatus());
+        verify(activity, never()).save(any());
+    }
+
+    @Test
+    void elResponsableNoLeGanaAlConflictoDeTransicionPeroSiAlNoResponsable() {
+        // Orden de EP3-04, sección 5: el 403 del no responsable va antes del 409 de la transición.
+        MunicipalRequest stored = requestWithStatus(RequestStatus.RESUELTO);
+        stored.assignTo("otro-func", "Otro");
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(stored));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                requestService.changeStatus("id-1", "ADMITIDO", null, null, new CallerContext("func", "Funcionario")));
+
+        assertEquals(403, ex.getStatusCode().value());
+    }
+
+    @Test
+    void elAdminOperaUnTramiteSinResponsableComoIntervencion() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-1");
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(stored));
+
+        MunicipalRequest updated = requestService.changeStatus("id-1", "ADMITIDO", null, "Atraso de la unidad",
+                new CallerContext("adm-1", "Admin"));
+
+        assertEquals(RequestStatus.ADMITIDO, updated.getStatus());
+    }
+
+    @Test
+    void elFiltroAssigneeMeUsaElOidDeQuienLlamaYNoneLosSinResponsable() {
+        CallerContext funcionario = new CallerContext("func", "Funcionario");
+
+        requestService.list(null, null, null, " me ", funcionario);
+        requestService.list(null, null, null, "none", funcionario);
+
+        verify(repository).search(isNull(), isNull(), isNull(), isNull(), eq("func"), isNull());
+        verify(repository).search(isNull(), isNull(), isNull(), isNull(), isNull(), eq("none"));
+    }
+
+    @Test
+    void elFiltroAssigneeEsSoloParaStaffYSoloAceptaMeONone() {
+        ResponseStatusException vecino = assertThrows(ResponseStatusException.class, () ->
+                requestService.list(null, null, null, "me", new CallerContext("vecino-1", "Vecino")));
+        ResponseStatusException invalid = assertThrows(ResponseStatusException.class, () ->
+                requestService.list(null, null, null, "oid-ana", new CallerContext("func", "Funcionario")));
+
+        assertEquals(403, vecino.getStatusCode().value());
+        assertEquals("El filtro assignee es solo para staff", vecino.getReason());
+        assertEquals(400, invalid.getStatusCode().value());
+        assertEquals("assignee debe ser me o none", invalid.getReason());
+        verifyNoInteractions(repository);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Funcionario", "Admin", "Auditor"})
+    void soloElVecinoCreaTramites(String role) {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                create(new CreateRequestDto("Hueco", "bache", "Calle 1"), new CallerContext("u-1", role)));
+
+        assertEquals(403, ex.getStatusCode().value());
+        assertEquals("Solo un Vecino puede crear un tramite", ex.getReason());
+        verify(folios, never()).next(anyInt());
+        verify(repository, never()).save(any());
     }
 
     @Test
     void changeStatus404SiNoExiste() {
         when(repository.findByIdForUpdate("no-existe")).thenReturn(Optional.empty());
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
-                requestService.changeStatus("no-existe", "ADMITIDO", null, new CallerContext("func-1", "Funcionario")));
+                requestService.changeStatus("no-existe", "ADMITIDO", null, null, new CallerContext("func", "Funcionario")));
         assertEquals(404, ex.getStatusCode().value());
     }
 
@@ -792,9 +930,9 @@ class RequestServiceTest {
             CallerContext caller
     ) {
         MunicipalRequest current = requestWithStatus(from);
-        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(current));
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(responsible(current)));
 
-        MunicipalRequest updated = requestService.changeStatus("id-1", rawTarget, reason, caller);
+        MunicipalRequest updated = requestService.changeStatus("id-1", rawTarget, reason, null, caller);
         assertEquals(expected, updated.getStatus());
         if (expected == RequestStatus.RECHAZADO) {
             assertEquals(reason, updated.getRejectionReason());
@@ -813,10 +951,16 @@ class RequestServiceTest {
 
     private void assertConflict(RequestStatus from, String rawTarget, CallerContext caller) {
         MunicipalRequest current = requestWithStatus(from);
-        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(current));
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(responsible(current)));
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
-                requestService.changeStatus("id-1", rawTarget, "motivo", caller));
+                requestService.changeStatus("id-1", rawTarget, "motivo", null, caller));
         assertEquals(409, ex.getStatusCode().value());
+    }
+
+    /** El trámite queda a cargo del Funcionario "func" que operan estos tests (EP3-04, sección 3). */
+    private static MunicipalRequest responsible(MunicipalRequest request) {
+        request.assignTo("func", "Funcionario");
+        return request;
     }
 
     private static MunicipalRequest requestWithStatus(RequestStatus status) {

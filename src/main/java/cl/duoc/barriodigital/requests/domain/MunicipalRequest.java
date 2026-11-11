@@ -108,6 +108,17 @@ public class MunicipalRequest {
     @Column(name = "rejection_reason", length = 500)
     private String rejectionReason;
 
+    /**
+     * Responsable del trámite (contrato EP3-05, sección 2): el oid de un Funcionario. Null mientras nadie lo toma.
+     * Se expone solo a través de RequestView: el Vecino no lo recibe.
+     */
+    @Column(name = "assignee_id", length = 64)
+    private String assigneeId;
+
+    /** Nombre del responsable al asignarlo, como snapshot. */
+    @Column(name = "assignee_name", length = 200)
+    private String assigneeName;
+
     /** Indica si el trámite tiene una imagen privada asociada en su propia tabla. */
     @Column(name = "has_attachment", nullable = false, columnDefinition = "NUMBER(1) DEFAULT 0")
     private boolean hasAttachment;
@@ -347,6 +358,27 @@ public class MunicipalRequest {
     /** Motivo, solo si el estado es RECHAZADO. */
     public String getRejectionReason() {
         return rejectionReason;
+    }
+
+    /** oid del responsable, o null si nadie lo ha tomado. */
+    public String getAssigneeId() {
+        return assigneeId;
+    }
+
+    /** Nombre del responsable al asignarlo. */
+    public String getAssigneeName() {
+        return assigneeName;
+    }
+
+    /** Indica si el trámite tiene responsable. */
+    public boolean hasAssignee() {
+        return assigneeId != null;
+    }
+
+    /** Deja un nuevo responsable. Nadie devuelve un trámite a "sin responsable" (EP3-05, sección 2). */
+    public void assignTo(String assigneeId, String assigneeName) {
+        this.assigneeId = Objects.requireNonNull(assigneeId, "assigneeId");
+        this.assigneeName = assigneeName;
     }
 
     /** Indica si hay una imagen adjunta, sin cargar el contenido binario. */

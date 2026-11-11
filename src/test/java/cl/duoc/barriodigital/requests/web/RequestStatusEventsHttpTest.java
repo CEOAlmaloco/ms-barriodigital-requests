@@ -241,6 +241,7 @@ class RequestStatusEventsHttpTest {
     private MunicipalRequest create(RequestStatus status) {
         MunicipalRequest request = new MunicipalRequest("t", "d", "bache", "dir", "vecino");
         request.assignFolio(TestFolios.unique());
+        request.assignTo("func", "Funcionario");
         request.setStatus(status);
         return repository.saveAndFlush(request);
     }

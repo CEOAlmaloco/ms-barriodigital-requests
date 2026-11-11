@@ -26,6 +26,8 @@ public interface MunicipalRequestRepository extends JpaRepository<MunicipalReque
     /**
      * Lista trámites. Un filtro null no se aplica. Los más recientes van primero.
      * {@code from} se incluye y {@code before} no, para cubrir días completos sin perder fracciones de segundo.
+     * {@code assigneeId} filtra por responsable, y {@code unassigned} no nulo deja solo los trámites sin responsable.
+     * Es un texto y no un booleano, para que la misma consulta corra en Oracle y en H2.
      */
     @Query("""
             SELECT r FROM MunicipalRequest r
@@ -33,12 +35,16 @@ public interface MunicipalRequestRepository extends JpaRepository<MunicipalReque
               AND (:from IS NULL OR r.createdAt >= :from)
               AND (:before IS NULL OR r.createdAt < :before)
               AND (:solicitanteId IS NULL OR r.solicitanteId = :solicitanteId)
+              AND (:assigneeId IS NULL OR r.assigneeId = :assigneeId)
+              AND (:unassigned IS NULL OR r.assigneeId IS NULL)
             ORDER BY r.createdAt DESC
             """)
     List<MunicipalRequest> search(
             @Param("status") RequestStatus status,
             @Param("from") Instant from,
             @Param("before") Instant before,
-            @Param("solicitanteId") String solicitanteId
+            @Param("solicitanteId") String solicitanteId,
+            @Param("assigneeId") String assigneeId,
+            @Param("unassigned") String unassigned
     );
 }

@@ -61,6 +61,7 @@ class RequestStatusConcurrencyTest {
             RequestStatus from, RequestStatus target, String type) throws Exception {
         MunicipalRequest initial = new MunicipalRequest("t", "d", "bache", "dir", "vecino");
         initial.assignFolio(TestFolios.unique());
+        initial.assignTo("func-1", "Funcionario");
         initial.setStatus(from);
         MunicipalRequest created = repository.saveAndFlush(initial);
         String id = created.getId();
@@ -71,7 +72,7 @@ class RequestStatusConcurrencyTest {
         var pool = Executors.newFixedThreadPool(2);
         try {
             var first = pool.submit(() -> new TransactionTemplate(transactions).execute(tx -> {
-                service.changeStatus(id, target.name(), null, caller);
+                service.changeStatus(id, target.name(), null, null, caller);
                 changed.countDown();
                 await(commit);
                 return 200;
@@ -80,7 +81,7 @@ class RequestStatusConcurrencyTest {
             var second = pool.submit(() -> {
                 secondStarted.countDown();
                 try {
-                    service.changeStatus(id, target.name(), null, caller);
+                    service.changeStatus(id, target.name(), null, null, caller);
                     return 200;
                 } catch (ResponseStatusException ex) {
                     assertEquals("No se puede pasar de " + target + " a " + target, ex.getReason());

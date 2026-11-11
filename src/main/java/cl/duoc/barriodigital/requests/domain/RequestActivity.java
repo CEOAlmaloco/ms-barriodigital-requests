@@ -7,6 +7,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.Check;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -14,9 +15,13 @@ import java.util.UUID;
 /**
  * Marca append-only del expediente. No tiene actualización ni borrado en la API.
  * El instante lo pone el servidor. El autor sale del header del BFF, no del body.
+ * Toda acción humana tiene autor: solo el hito público de asignación va sin actor (contrato EP3-05, sección 6.4).
+ * En Oracle, la misma regla la crea db/assignment-request-activity.sql.
  */
 @Entity
 @Table(name = "request_activity", indexes = @Index(name = "idx_request_activity_request", columnList = "request_id"))
+@Check(name = "ck_request_activity_actor",
+        constraints = "actor_id IS NOT NULL OR (kind = 'ASIGNACION' AND visibility = 'PUBLICO')")
 public class RequestActivity {
 
     @Id
@@ -37,7 +42,7 @@ public class RequestActivity {
     @Column(nullable = false, length = 20)
     private ActivityVisibility visibility;
 
-    @Column(name = "actor_id", nullable = false, length = 64)
+    @Column(name = "actor_id", length = 64)
     private String actorId;
 
     @Column(name = "actor_name", length = 200)
@@ -70,6 +75,27 @@ public class RequestActivity {
 
     @Column(name = "next_attempt_at")
     private Instant nextAttemptAt;
+
+    /**
+     * Motivo de una intervención del Admin (contrato EP3-04, sección 3). Es interno: el Vecino nunca lo recibe,
+     * aunque la fila sea PUBLICO, y no entra en el summary.
+     */
+    @Column(name = "intervention_reason", length = 500)
+    private String interventionReason;
+
+    /** Nuevo responsable. Solo en las filas ASIGNACION internas. */
+    @Column(name = "assignee_id", length = 64)
+    private String assigneeId;
+
+    @Column(name = "assignee_name", length = 200)
+    private String assigneeName;
+
+    /** Responsable anterior. Null en la primera asignación. */
+    @Column(name = "previous_assignee_id", length = 64)
+    private String previousAssigneeId;
+
+    @Column(name = "previous_assignee_name", length = 200)
+    private String previousAssigneeName;
 
     protected RequestActivity() {
         // JPA
@@ -114,7 +140,10 @@ public class RequestActivity {
         return event;
     }
 
-    /** Cambio de estado. Guarda el valor anterior y el nuevo. La ve el vecino. */
+    /**
+     * Cambio de estado. Guarda el valor anterior y el nuevo. La ve el vecino.
+     * El summary lleva solo el motivo de rechazo; el de intervención queda aparte, para staff.
+     */
     public static RequestActivity statusChanged(
             String requestId,
             Instant occurredAt,
@@ -122,7 +151,8 @@ public class RequestActivity {
             String actorName,
             RequestStatus from,
             RequestStatus to,
-            String reason
+            String reason,
+            String interventionReason
     ) {
         String summary = "Pasó de " + from.label() + " a " + to.label() + ".";
         if (reason != null && !reason.isBlank()) {
@@ -143,6 +173,7 @@ public class RequestActivity {
         event.fromStatus = from;
         event.toStatus = to;
         event.reason = reason == null || reason.isBlank() ? null : reason.trim();
+        event.interventionReason = blankToNull(interventionReason);
         return event;
     }
 
@@ -158,7 +189,8 @@ public class RequestActivity {
             ContactChannel channel,
             ContactResult result,
             String note,
-            Instant nextAttemptAt
+            Instant nextAttemptAt,
+            String interventionReason
     ) {
         String summary = channel.label() + ". Resultado: " + result.label() + ".";
         RequestActivity event = new RequestActivity(
@@ -174,7 +206,71 @@ public class RequestActivity {
         event.result = result;
         event.note = note == null || note.isBlank() ? null : note.trim();
         event.nextAttemptAt = nextAttemptAt;
+        event.interventionReason = blankToNull(interventionReason);
         return event;
+    }
+
+    /**
+     * Toma, asignación o reasignación. Queda interna, con el detalle para el staff (EP3-05, sección 6.1).
+     * reason es el motivo de la reasignación, en la misma columna que el motivo de rechazo de las filas ESTADO.
+     */
+    public static RequestActivity assigned(
+            String requestId,
+            Instant occurredAt,
+            String actorId,
+            String actorName,
+            String assigneeId,
+            String assigneeName,
+            String previousAssigneeId,
+            String previousAssigneeName,
+            String reason
+    ) {
+        String summary;
+        if (previousAssigneeId == null && assigneeId.equals(actorId)) {
+            summary = "Tomó el trámite";
+        } else if (previousAssigneeId == null) {
+            summary = "Asignó a " + assigneeName;
+        } else {
+            summary = "Reasignó de " + previousAssigneeName + " a " + assigneeName + ". Motivo: " + reason;
+        }
+        if (summary.length() > 500) {
+            summary = summary.substring(0, 500);
+        }
+        RequestActivity event = new RequestActivity(
+                requestId,
+                occurredAt,
+                ActivityKind.ASIGNACION,
+                ActivityVisibility.INTERNO,
+                actorId,
+                actorName,
+                summary
+        );
+        event.assigneeId = assigneeId;
+        event.assigneeName = assigneeName;
+        event.previousAssigneeId = previousAssigneeId;
+        event.previousAssigneeName = previousAssigneeName;
+        event.reason = blankToNull(reason);
+        return event;
+    }
+
+    /**
+     * Hito público de la primera asignación, sin actor (EP3-04, sección 6.2). Es lo único que el Vecino ve
+     * de la asignación; las reasignaciones no generan hito.
+     */
+    public static RequestActivity assignmentMilestone(String requestId, Instant occurredAt) {
+        return new RequestActivity(
+                requestId,
+                occurredAt,
+                ActivityKind.ASIGNACION,
+                ActivityVisibility.PUBLICO,
+                null,
+                null,
+                "Tu solicitud fue asignada para su atención"
+        );
+    }
+
+    private static String blankToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
     }
 
     public String getId() {
@@ -235,5 +331,30 @@ public class RequestActivity {
 
     public Instant getNextAttemptAt() {
         return nextAttemptAt;
+    }
+
+    public String getInterventionReason() {
+        return interventionReason;
+    }
+
+    public String getAssigneeId() {
+        return assigneeId;
+    }
+
+    public String getAssigneeName() {
+        return assigneeName;
+    }
+
+    public String getPreviousAssigneeId() {
+        return previousAssigneeId;
+    }
+
+    public String getPreviousAssigneeName() {
+        return previousAssigneeName;
+    }
+
+    /** El hito público de la primera asignación, que el staff no necesita: ya tiene la fila interna. */
+    public boolean isAssignmentMilestone() {
+        return kind == ActivityKind.ASIGNACION && visibility == ActivityVisibility.PUBLICO;
     }
 }

@@ -2,15 +2,20 @@ package cl.duoc.barriodigital.requests.integration;
 
 import cl.duoc.barriodigital.requests.config.ClockConfig;
 import cl.duoc.barriodigital.requests.config.RabbitConfig;
+import cl.duoc.barriodigital.requests.config.WebConfig;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.messaging.EventPublisher;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.service.FolioCounterService;
 import cl.duoc.barriodigital.requests.service.ImageAttachmentSanitizer;
 import cl.duoc.barriodigital.requests.service.RequestActivityService;
+import cl.duoc.barriodigital.requests.service.RequestAssignmentService;
 import cl.duoc.barriodigital.requests.service.RequestCreationOrchestrationService;
 import cl.duoc.barriodigital.requests.service.RequestService;
+import cl.duoc.barriodigital.requests.service.StaffMemberService;
 import cl.duoc.barriodigital.requests.web.RequestController;
+import cl.duoc.barriodigital.requests.web.SingleRoleInterceptor;
+import cl.duoc.barriodigital.requests.web.StaffMemberInterceptor;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.EnableAutoConfiguration;
 import org.springframework.boot.autoconfigure.domain.EntityScan;
@@ -29,6 +34,11 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
         RequestCreationOrchestrationService.class,
         FolioCounterService.class,
         ClockConfig.class,
+        WebConfig.class,
+        SingleRoleInterceptor.class,
+        StaffMemberService.class,
+        RequestAssignmentService.class,
+        StaffMemberInterceptor.class,
         RequestActivityService.class,
         ImageAttachmentSanitizer.class,
         RabbitConfig.class,
