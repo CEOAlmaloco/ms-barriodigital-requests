@@ -24,6 +24,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -97,5 +98,37 @@ class RequestControllerStatusTest {
                         .header("X-User-Roles", "Funcionario")
                         .content("{\"status\":\"RECHAZADO\"}"))
                 .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void postRatingDevuelve200() throws Exception {
+        MunicipalRequest rated = new MunicipalRequest("t", "d", "bache", "dir", "oid-vecino");
+        rated.setStatus(RequestStatus.RESUELTO);
+        rated.applyRating(5, "Bien");
+        when(requestService.rate(eq("id-1"), eq(5), eq("Bien"), any())).thenReturn(rated);
+
+        mockMvc.perform(post("/api/requests/id-1/rating")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-User-Id", "oid-vecino")
+                        .header("X-User-Roles", "Vecino")
+                        .content("{\"score\":5,\"comment\":\"Bien\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.satisfactionScore").value(5))
+                .andExpect(jsonPath("$.satisfactionComment").value("Bien"));
+
+        verify(requestService).rate(eq("id-1"), eq(5), eq("Bien"), any());
+    }
+
+    @Test
+    void postRatingPropaga409() throws Exception {
+        when(requestService.rate(eq("id-1"), eq(3), isNull(), any()))
+                .thenThrow(new ResponseStatusException(HttpStatus.CONFLICT, "El tramite ya fue calificado"));
+
+        mockMvc.perform(post("/api/requests/id-1/rating")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header("X-User-Id", "oid-vecino")
+                        .header("X-User-Roles", "Vecino")
+                        .content("{\"score\":3}"))
+                .andExpect(status().isConflict());
     }
 }

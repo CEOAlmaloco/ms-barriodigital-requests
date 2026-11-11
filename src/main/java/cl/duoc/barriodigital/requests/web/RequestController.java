@@ -18,6 +18,7 @@ import cl.duoc.barriodigital.requests.web.dto.AssigneeView;
 import cl.duoc.barriodigital.requests.web.dto.ChangeStatusDto;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import cl.duoc.barriodigital.requests.web.dto.PageView;
+import cl.duoc.barriodigital.requests.web.dto.RateRequestDto;
 import cl.duoc.barriodigital.requests.web.dto.RegisterGestionDto;
 import cl.duoc.barriodigital.requests.web.dto.RequestView;
 import jakarta.validation.Valid;
@@ -145,6 +146,19 @@ public class RequestController {
                 requestService.changeStatus(id, body.status(), body.rejectionReason(), body.interventionReason(), caller),
                 caller
         );
+    }
+
+    /** Encuesta de satisfacción. Solo el Vecino titular y solo en RESUELTO, una vez (EP3-74). */
+    @PostMapping("/{id}/rating")
+    public RequestView rate(
+            @PathVariable String id,
+            @Valid @RequestBody RateRequestDto body,
+            @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
+            @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles,
+            @RequestHeader(value = CallerContext.HEADER_USER_NAME, required = false) String userName
+    ) {
+        CallerContext caller = new CallerContext(userId, roles, userName);
+        return RequestView.of(requestService.rate(id, body.score(), body.comment(), caller), caller);
     }
 
     /** Historial, gestiones visibles según el rol y los tiempos que sí se pueden calcular. */

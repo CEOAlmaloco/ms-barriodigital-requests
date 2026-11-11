@@ -174,6 +174,29 @@ class OutboxH2Test {
     }
 
     @Test
+    void laCalificacionDelTitularDejaRequestRated() throws Exception {
+        MunicipalRequest created = create();
+        inTransaction(() -> {
+            MunicipalRequest found = repository.findByIdForUpdate(created.getId()).orElseThrow();
+            found.applyStatus(RequestStatus.RESUELTO, null);
+            repository.save(found);
+        });
+
+        inTransaction(() -> requests.rate(created.getId(), 5, "Bien", VECINO));
+
+        List<OutboxEvent> events = events(created.getId());
+        assertEquals(List.of(DomainEventRecorder.REQUEST_CREATED, DomainEventRecorder.REQUEST_RATED), types(events));
+        assertEquals(5, repository.findById(created.getId()).orElseThrow().getSatisfactionScore());
+        JsonNode rated = JSON.readTree(events.get(1).getPayload());
+        assertEquals(5, rated.get("payload").get("score").intValue());
+        assertEquals("Bien", rated.get("payload").get("comment").asText());
+        assertEquals("Vecino", rated.get("actor").get("role").asText());
+        assertEquals(1, rows(created.getId()).stream()
+                .filter(row -> row.getKind() == ActivityKind.CALIFICACION)
+                .count());
+    }
+
+    @Test
     void unRollbackNoDejaNiLaActividadNiElEvento() {
         MunicipalRequest created = create();
         inTransaction(() -> assignment.take(created.getId(), ANA));

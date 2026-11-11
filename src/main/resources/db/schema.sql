@@ -23,6 +23,8 @@ CREATE TABLE municipal_requests (
     assignee_id     VARCHAR2(64),
     assignee_name   VARCHAR2(200),
     sla_business_days NUMBER(10),
+    satisfaction_score NUMBER(1),
+    satisfaction_comment VARCHAR2(500),
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL,
     updated_at      TIMESTAMP WITH TIME ZONE NOT NULL,
     CONSTRAINT uk_municipal_requests_folio UNIQUE (folio)
@@ -73,7 +75,7 @@ CREATE TABLE request_activity (
     assignee_name          VARCHAR2(200),
     previous_assignee_id   VARCHAR2(64),
     previous_assignee_name VARCHAR2(200),
-    CONSTRAINT ck_request_activity_kind CHECK (kind IN ('CREADO', 'ESTADO', 'GESTION', 'ASIGNACION')),
+    CONSTRAINT ck_request_activity_kind CHECK (kind IN ('CREADO', 'ESTADO', 'GESTION', 'ASIGNACION', 'CALIFICACION')),
     -- Solo el hito público de asignación va sin actor (EP3-05). Las bases existentes usan assignment-request-activity.sql.
     CONSTRAINT ck_request_activity_actor
         CHECK (actor_id IS NOT NULL OR (kind = 'ASIGNACION' AND visibility = 'PUBLICO'))

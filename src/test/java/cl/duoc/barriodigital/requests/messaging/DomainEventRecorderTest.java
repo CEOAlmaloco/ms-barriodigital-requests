@@ -185,6 +185,38 @@ class DomainEventRecorderTest {
     }
 
     @Test
+    void requestRatedDelTitular() throws Exception {
+        MunicipalRequest request = request();
+        request.applyRating(5, "Muy bien");
+        RequestActivity row = RequestActivity.rated(REQUEST_ID, AT, "oid-vecino", "Vecino Test", "Vecino", 5, "Muy bien");
+
+        OutboxEvent saved = recorder.record(request, row, TRACE);
+
+        assertEquals(DomainEventRecorder.REQUEST_RATED, saved.getEventType());
+        JsonNode json = envelope(saved, "request.rated");
+        assertEquals("Vecino", json.get("actor").get("role").asText());
+        JSONAssert.assertEquals("""
+                {
+                  "requestId": "7b6e1d44-2a18-4c90-9f01-88aa11bb22cc",
+                  "folio": "BD-2026-000123",
+                  "score": 5,
+                  "comment": "Muy bien"
+                }""", json.get("payload").toString(), JSONCompareMode.STRICT);
+    }
+
+    @Test
+    void requestRatedSinComentarioLlevaCommentEnNull() throws Exception {
+        MunicipalRequest request = request();
+        request.applyRating(1, null);
+        RequestActivity row = RequestActivity.rated(REQUEST_ID, AT, "oid-vecino", "Vecino Test", "Vecino", 1, null);
+
+        JsonNode payload = envelope(recorder.record(request, row, TRACE), "request.rated").get("payload");
+
+        assertEquals(1, payload.get("score").intValue());
+        assertTrue(payload.has("comment") && payload.get("comment").isNull());
+    }
+
+    @Test
     void elHitoPublicoDeAsignacionNoGeneraEvento() {
         RequestActivity milestone = RequestActivity.assignmentMilestone(REQUEST_ID, AT);
 

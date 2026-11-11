@@ -133,6 +133,17 @@ public class MunicipalRequest {
     @Column(name = "sla_business_days")
     private Integer slaBusinessDays;
 
+    /**
+     * Nota de la encuesta de satisfacción (EP3-74): 1 a 5. Null si el titular aún no calificó.
+     * Solo aplica a trámites RESUELTO y se escribe una sola vez.
+     */
+    @Column(name = "satisfaction_score")
+    private Integer satisfactionScore;
+
+    /** Comentario opcional de la encuesta. Null si no hubo comentario. Máximo 500 caracteres. */
+    @Column(name = "satisfaction_comment", length = 500)
+    private String satisfactionComment;
+
     /** Indica si el trámite tiene una imagen privada asociada en su propia tabla. */
     @Column(name = "has_attachment", nullable = false, columnDefinition = "NUMBER(1) DEFAULT 0")
     private boolean hasAttachment;
@@ -425,6 +436,29 @@ public class MunicipalRequest {
         this.status = next;
         this.rejectionReason = next == RequestStatus.RECHAZADO ? rejectionReason : null;
         // Es también el instante de la marca ESTADO y de request.status-changed.
+        this.updatedAt = StoredInstant.now();
+    }
+
+    public Integer getSatisfactionScore() {
+        return satisfactionScore;
+    }
+
+    public String getSatisfactionComment() {
+        return satisfactionComment;
+    }
+
+    /** Indica si el titular ya respondió la encuesta. */
+    public boolean isRated() {
+        return satisfactionScore != null;
+    }
+
+    /**
+     * Guarda la calificación del titular. score ya validado (1..5); comment null o recortado.
+     * Es también el instante de la marca CALIFICACION y de request.rated.
+     */
+    public void applyRating(int score, String comment) {
+        this.satisfactionScore = score;
+        this.satisfactionComment = comment;
         this.updatedAt = StoredInstant.now();
     }
 }
