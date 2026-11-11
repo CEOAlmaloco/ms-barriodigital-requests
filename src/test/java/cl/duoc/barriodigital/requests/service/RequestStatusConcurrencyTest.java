@@ -42,7 +42,8 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-@Import({RequestService.class, FolioCounterService.class, DomainEventRecorder.class, ClockConfig.class})
+@Import({RequestService.class, FolioCounterService.class, DomainEventRecorder.class, ClockConfig.class,
+        NotificationPreferenceService.class})
 @TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class RequestStatusConcurrencyTest {
 

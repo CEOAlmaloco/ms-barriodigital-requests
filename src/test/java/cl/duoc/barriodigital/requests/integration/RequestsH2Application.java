@@ -13,6 +13,7 @@ import cl.duoc.barriodigital.requests.service.RequestActivityService;
 import cl.duoc.barriodigital.requests.service.RequestAssignmentService;
 import cl.duoc.barriodigital.requests.service.RequestCreationOrchestrationService;
 import cl.duoc.barriodigital.requests.service.RequestService;
+import cl.duoc.barriodigital.requests.service.NotificationPreferenceService;
 import cl.duoc.barriodigital.requests.service.StaffMemberService;
 import cl.duoc.barriodigital.requests.web.RequestController;
 import cl.duoc.barriodigital.requests.web.SingleRoleInterceptor;
@@ -44,7 +45,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
         ImageAttachmentSanitizer.class,
         RabbitConfig.class,
         EventPublisher.class,
-        DomainEventRecorder.class
+        DomainEventRecorder.class,
+        NotificationPreferenceService.class
 })
 public class RequestsH2Application {
     public static void main(String[] args) {

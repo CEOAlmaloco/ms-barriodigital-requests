@@ -6,6 +6,9 @@ Puerto: **8081**
 
 Estados del caso: `INGRESADO → ADMITIDO → EN_GESTION → EN_TERRENO → RESUELTO | RECHAZADO`
 
+Preferencias de aviso (EP3-65): `GET|PUT /api/requests/me/notification-preferences` con `{ "emailEnabled": true|false }`.
+Si el titular desactiva el correo, requests no publica `email.*` a RabbitMQ; `certificate.*` y `crew.ticket` salen igual.
+
 ## Cómo iniciar (Oracle — EP1-21 / EP1-14)
 
 Requiere JDK 21, `JAVA_HOME` apuntando a ese JDK, acceso a Oracle Autonomous y su wallet. Maven Wrapper

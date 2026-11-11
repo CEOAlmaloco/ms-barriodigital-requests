@@ -47,7 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import({RequestService.class, FolioCounterService.class, RequestAssignmentService.class, StaffMemberService.class,
-        ClockConfig.class, DomainEventRecorder.class})
+        ClockConfig.class, DomainEventRecorder.class, NotificationPreferenceService.class})
 @TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class RequestAssignmentH2Test {
 

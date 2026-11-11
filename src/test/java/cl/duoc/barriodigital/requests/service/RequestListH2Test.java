@@ -34,7 +34,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
-@Import({RequestService.class, FolioCounterService.class, DomainEventRecorder.class, ClockConfig.class})
+@Import({RequestService.class, FolioCounterService.class, DomainEventRecorder.class, ClockConfig.class,
+        NotificationPreferenceService.class})
 @TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class RequestListH2Test {
 
