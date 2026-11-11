@@ -261,7 +261,7 @@ class RequestStatusEventsTransactionTest {
     void lecturasNoPublican() {
         MunicipalRequest initial = create(RequestStatus.INGRESADO);
         service.getById(initial.getId(), funcionario);
-        service.list(null, null, null, funcionario);
+        service.list(null, null, null, null, funcionario);
         verifyNoInteractions(publisher);
     }
 
@@ -279,6 +279,7 @@ class RequestStatusEventsTransactionTest {
         MunicipalRequest request = new MunicipalRequest("t", "d", "bache", "dir", "vecino", "Vecino",
                 "vecino@example.com", "Etiqueta guardada");
         request.assignFolio(TestFolios.unique());
+        request.assignTo("func", "Funcionario");
         request.setStatus(status);
         return repository.saveAndFlush(request);
     }

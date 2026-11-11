@@ -5,6 +5,7 @@ import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.service.ImageAttachmentSanitizer;
 import cl.duoc.barriodigital.requests.service.RequestActivityService;
+import cl.duoc.barriodigital.requests.service.RequestAssignmentService;
 import cl.duoc.barriodigital.requests.service.RequestCreationOrchestrationService;
 import cl.duoc.barriodigital.requests.service.RequestService;
 import cl.duoc.barriodigital.requests.service.StaffMemberService;
@@ -48,6 +49,9 @@ class RequestControllerStatusTest {
 
     @MockBean
     private StaffMemberService staffMembers;
+
+    @MockBean
+    private RequestAssignmentService assignment;
 
     @Test
     void putStatusDevuelve200ConRecurso() throws Exception {

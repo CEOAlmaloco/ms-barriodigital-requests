@@ -41,6 +41,7 @@ public record RequestView(
     /** Arma la vista según el rol de quien llama. */
     public static RequestView of(MunicipalRequest request, CallerContext caller) {
         boolean auditor = caller != null && caller.isAuditor();
+        boolean staff = caller != null && caller.isStaff();
         return new RequestView(
                 request.getId(),
                 request.getFolio(),
@@ -62,10 +63,10 @@ public record RequestView(
                 request.isHasAttachment(),
                 request.getCreatedAt(),
                 request.getUpdatedAt(),
-                // El responsable llega con las columnas de asignación; hasta entonces ningún trámite lo tiene.
-                false,
-                null,
-                null
+                // El Vecino sabe si hay responsable ("En atención"), pero no quién es (EP3-04, sección 6.1).
+                request.hasAssignee(),
+                staff ? request.getAssigneeId() : null,
+                staff ? request.getAssigneeName() : null
         );
     }
 }

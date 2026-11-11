@@ -61,6 +61,7 @@ class RequestStatusConcurrencyTest {
             RequestStatus from, RequestStatus target, String type) throws Exception {
         MunicipalRequest initial = new MunicipalRequest("t", "d", "bache", "dir", "vecino");
         initial.assignFolio(TestFolios.unique());
+        initial.assignTo("func-1", "Funcionario");
         initial.setStatus(from);
         MunicipalRequest created = repository.saveAndFlush(initial);
         String id = created.getId();

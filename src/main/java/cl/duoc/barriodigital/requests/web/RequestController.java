@@ -6,11 +6,13 @@ import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.domain.RequestTransitions;
 import cl.duoc.barriodigital.requests.service.ImageAttachmentSanitizer;
 import cl.duoc.barriodigital.requests.service.RequestActivityService;
+import cl.duoc.barriodigital.requests.service.RequestAssignmentService;
 import cl.duoc.barriodigital.requests.service.RequestAttachmentContent;
 import cl.duoc.barriodigital.requests.service.RequestCreationOrchestrationService;
 import cl.duoc.barriodigital.requests.service.RequestService;
 import cl.duoc.barriodigital.requests.service.StaffMemberService;
 import cl.duoc.barriodigital.requests.web.dto.ActividadView;
+import cl.duoc.barriodigital.requests.web.dto.AssignRequestDto;
 import cl.duoc.barriodigital.requests.web.dto.AssigneeView;
 import cl.duoc.barriodigital.requests.web.dto.ChangeStatusDto;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
@@ -54,20 +56,23 @@ public class RequestController {
     private final RequestActivityService activityService;
     private final ImageAttachmentSanitizer imageSanitizer;
     private final StaffMemberService staffMembers;
+    private final RequestAssignmentService assignment;
 
-    /** Recibe los servicios del trámite, del alta, del historial y del personal, y el saneador de imágenes. */
+    /** Recibe los servicios del trámite, del alta, del historial, del personal y de la asignación, y el saneador. */
     public RequestController(
             RequestService requestService,
             RequestCreationOrchestrationService creation,
             RequestActivityService activityService,
             ImageAttachmentSanitizer imageSanitizer,
-            StaffMemberService staffMembers
+            StaffMemberService staffMembers,
+            RequestAssignmentService assignment
     ) {
         this.requestService = requestService;
         this.creation = creation;
         this.activityService = activityService;
         this.imageSanitizer = imageSanitizer;
         this.staffMembers = staffMembers;
+        this.assignment = assignment;
     }
 
     /** Crea un trámite con el body y la identidad de los headers. */
@@ -161,6 +166,33 @@ public class RequestController {
         return ResponseEntity.status(HttpStatus.CREATED).body(view);
     }
 
+    /** El Funcionario toma un trámite sin responsable (contrato EP3-05, sección 3.1). */
+    @PostMapping("/{id}/take")
+    public RequestView take(
+            @PathVariable String id,
+            @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
+            @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles,
+            @RequestHeader(value = CallerContext.HEADER_USER_NAME, required = false) String userName
+    ) {
+        CallerContext caller = new CallerContext(userId, roles, userName);
+        return RequestView.of(assignment.take(id, caller), caller);
+    }
+
+    /**
+     * Primera asignación del Admin, o reasignación con motivo del Admin o del responsable (contrato EP3-05, sección 3.2).
+     */
+    @PutMapping("/{id}/assignee")
+    public RequestView assign(
+            @PathVariable String id,
+            @Valid @RequestBody AssignRequestDto body,
+            @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
+            @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles,
+            @RequestHeader(value = CallerContext.HEADER_USER_NAME, required = false) String userName
+    ) {
+        CallerContext caller = new CallerContext(userId, roles, userName);
+        return RequestView.of(assignment.assign(id, body, caller), caller);
+    }
+
     /**
      * Funcionarios a los que se puede asignar un trámite, por nombre. Solo Funcionario y Admin.
      * Es una ruta literal, así que {id} no la captura.
@@ -184,17 +216,21 @@ public class RequestController {
         return RequestView.of(requestService.getById(id, caller), caller);
     }
 
-    /** Lista trámites. Las fechas from y to llegan como día, por ejemplo 2026-10-25. */
+    /**
+     * Lista trámites. Las fechas from y to llegan como día, por ejemplo 2026-10-25.
+     * assignee=me|none filtra por responsable, solo para staff.
+     */
     @GetMapping
     public List<RequestView> list(
             @RequestParam(required = false) RequestStatus status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
+            @RequestParam(required = false) String assignee,
             @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
             @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles
     ) {
         CallerContext caller = new CallerContext(userId, roles);
-        return requestService.list(status, from, to, caller).stream()
+        return requestService.list(status, from, to, assignee, caller).stream()
                 .map(request -> RequestView.of(request, caller))
                 .toList();
     }

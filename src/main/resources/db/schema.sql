@@ -20,6 +20,8 @@ CREATE TABLE municipal_requests (
     status          VARCHAR2(30)   NOT NULL,
     rejection_reason VARCHAR2(500),
     has_attachment  NUMBER(1) DEFAULT 0 NOT NULL,
+    assignee_id     VARCHAR2(64),
+    assignee_name   VARCHAR2(200),
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL,
     updated_at      TIMESTAMP WITH TIME ZONE NOT NULL,
     CONSTRAINT uk_municipal_requests_folio UNIQUE (folio)
@@ -53,7 +55,7 @@ CREATE TABLE request_activity (
     occurred_at      TIMESTAMP WITH TIME ZONE NOT NULL,
     kind             VARCHAR2(20)  NOT NULL,
     visibility       VARCHAR2(20)  NOT NULL,
-    actor_id         VARCHAR2(64)  NOT NULL,
+    actor_id         VARCHAR2(64),
     actor_name       VARCHAR2(200),
     summary          VARCHAR2(500) NOT NULL,
     from_status      VARCHAR2(30),
@@ -62,7 +64,25 @@ CREATE TABLE request_activity (
     channel          VARCHAR2(30),
     contact_result   VARCHAR2(40),
     note             VARCHAR2(500),
-    next_attempt_at  TIMESTAMP WITH TIME ZONE
+    next_attempt_at  TIMESTAMP WITH TIME ZONE,
+    intervention_reason    VARCHAR2(500),
+    assignee_id            VARCHAR2(64),
+    assignee_name          VARCHAR2(200),
+    previous_assignee_id   VARCHAR2(64),
+    previous_assignee_name VARCHAR2(200),
+    CONSTRAINT ck_request_activity_kind CHECK (kind IN ('CREADO', 'ESTADO', 'GESTION', 'ASIGNACION')),
+    -- Solo el hito público de asignación va sin actor (EP3-05). Las bases existentes usan assignment-request-activity.sql.
+    CONSTRAINT ck_request_activity_actor
+        CHECK (actor_id IS NOT NULL OR (kind = 'ASIGNACION' AND visibility = 'PUBLICO'))
 );
 
 CREATE INDEX idx_request_activity_request ON request_activity (request_id);
+
+-- Personal municipal visto por requests (EP3-05, sección 5). Los vecinos no se registran.
+CREATE TABLE staff_member (
+    oid           VARCHAR2(64)  PRIMARY KEY,
+    name          VARCHAR2(200) NOT NULL,
+    role          VARCHAR2(20)  NOT NULL,
+    first_seen_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    last_seen_at  TIMESTAMP WITH TIME ZONE NOT NULL
+);

@@ -60,7 +60,8 @@ public class RequestActivityService {
      * Registra una gestión interna. Si el guardado falla, la transacción no confirma nada.
      * La registra el Funcionario, o el Admin como intervención con interventionReason (EP3-04, sección 3).
      * Responde en el orden del contrato EP3-04: 403 por rol, 400 si nextAttemptAt no es futura o si el Admin no da motivo,
-     * 404 si el trámite no existe y 409 si está cerrado. El estado se revisa con la fila bloqueada.
+     * 404 si el trámite no existe, 403 si el Funcionario no es el responsable y 409 si está cerrado.
+     * El responsable y el estado se revisan con la fila bloqueada.
      */
     @Transactional
     public ActividadView registerGestion(String requestId, RegisterGestionDto body, CallerContext caller) {
@@ -74,6 +75,7 @@ public class RequestActivityService {
         }
         String intervention = RequestService.interventionReason(caller, body.interventionReason());
         MunicipalRequest request = locked(requestId);
+        RequestService.requireResponsible(request, caller);
         if (TERMINAL.contains(request.getStatus())) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT,
@@ -106,8 +108,10 @@ public class RequestActivityService {
 
     private ActividadView build(MunicipalRequest request, CallerContext caller, boolean staff) {
         List<RequestActivity> all = activity.findByRequestIdOrderByOccurredAtAsc(request.getId());
+        // Cada rol ve una sola fila de la asignación (EP3-05, sección 6.3): el Vecino el hito público,
+        // el staff la fila interna, que ya trae el detalle.
         List<RequestActivity> visible = staff
-                ? all
+                ? all.stream().filter(event -> !event.isAssignmentMilestone()).toList()
                 : all.stream().filter(event -> event.getVisibility() == ActivityVisibility.PUBLICO).toList();
         return new ActividadView(
                 request.getId(),
@@ -138,6 +142,17 @@ public class RequestActivityService {
         }
         Long primera = attention == null ? null : Math.max(0, Duration.between(request.getCreatedAt(), attention).getSeconds());
 
+        // Tiempo de asignación: alta hasta la primera fila ASIGNACION interna, solo para staff (EP3-04, sección 6.2).
+        Instant firstAssignment = staff ? all.stream()
+                .filter(event -> event.getKind() == ActivityKind.ASIGNACION
+                        && event.getVisibility() == ActivityVisibility.INTERNO)
+                .map(RequestActivity::getOccurredAt)
+                .min(Instant::compareTo)
+                .orElse(null) : null;
+        Long asignacion = firstAssignment == null
+                ? null
+                : Math.max(0, Duration.between(request.getCreatedAt(), firstAssignment).getSeconds());
+
         RequestActivity cierre = all.stream()
                 .filter(event -> event.getKind() == ActivityKind.ESTADO && TERMINAL.contains(event.getToStatus()))
                 .reduce((first, second) -> second)
@@ -149,13 +164,15 @@ public class RequestActivityService {
                 : null;
 
         List<String> noCalculado = new ArrayList<>();
-        noCalculado.add("Tiempo de asignación: el expediente todavía no tiene responsable.");
+        if (staff && firstAssignment == null) {
+            noCalculado.add("Tiempo de asignación: el expediente todavía no tiene responsable.");
+        }
         noCalculado.add("Espera del vecino y espera de otra unidad: esos estados no existen.");
         noCalculado.add("Fuera de plazo: el tipo de trámite no tiene un plazo configurado.");
         if (!abierto && cierre == null) {
             noCalculado.add("Tiempo total: el trámite ya está cerrado y no hay marca del cierre.");
         }
-        return new TiemposView(primera, municipal, desdeIngreso, resolucion, etapas, List.copyOf(noCalculado));
+        return new TiemposView(primera, asignacion, municipal, desdeIngreso, resolucion, etapas, List.copyOf(noCalculado));
     }
 
     private static List<EtapaView> etapas(List<RequestActivity> all, RequestStatus current, Instant now) {
@@ -220,7 +237,12 @@ public class RequestActivityService {
                 event.getNote(),
                 event.getNextAttemptAt(),
                 // Interno aunque la fila sea PUBLICO (EP3-04, sección 6.2).
-                staff ? event.getInterventionReason() : null
+                staff ? event.getInterventionReason() : null,
+                // El detalle de la asignación es solo para staff: el Vecino ve el hito, sin nombres.
+                staff ? event.getAssigneeId() : null,
+                staff ? event.getAssigneeName() : null,
+                staff ? event.getPreviousAssigneeId() : null,
+                staff ? event.getPreviousAssigneeName() : null
         );
     }
 

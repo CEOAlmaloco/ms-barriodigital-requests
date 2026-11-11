@@ -9,6 +9,7 @@ import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.service.FolioCounterService;
 import cl.duoc.barriodigital.requests.service.ImageAttachmentSanitizer;
 import cl.duoc.barriodigital.requests.service.RequestActivityService;
+import cl.duoc.barriodigital.requests.service.RequestAssignmentService;
 import cl.duoc.barriodigital.requests.service.RequestCreationOrchestrationService;
 import cl.duoc.barriodigital.requests.service.RequestService;
 import cl.duoc.barriodigital.requests.service.StaffMemberService;
@@ -36,6 +37,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
         WebConfig.class,
         SingleRoleInterceptor.class,
         StaffMemberService.class,
+        RequestAssignmentService.class,
         StaffMemberInterceptor.class,
         RequestActivityService.class,
         ImageAttachmentSanitizer.class,

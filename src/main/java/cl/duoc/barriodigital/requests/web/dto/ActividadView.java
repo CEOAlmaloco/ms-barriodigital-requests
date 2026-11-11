@@ -33,7 +33,11 @@ public record ActividadView(
             ContactResult result,
             String note,
             Instant nextAttemptAt,
-            String interventionReason
+            String interventionReason,
+            String assigneeId,
+            String assigneeName,
+            String previousAssigneeId,
+            String previousAssigneeName
     ) {
     }
 
@@ -43,9 +47,11 @@ public record ActividadView(
     /**
      * Los segundos nulos no se inventan como cero.
      * desdeElIngresoSegundos existe cuando el trámite sigue abierto, porque createdAt es una marca real.
+     * primeraAsignacionSegundos es solo para staff: alta hasta la primera asignación.
      */
     public record TiemposView(
             Long primeraAtencionSegundos,
+            Long primeraAsignacionSegundos,
             Long gestionMunicipalSegundos,
             Long desdeElIngresoSegundos,
             Long totalResolucionSegundos,

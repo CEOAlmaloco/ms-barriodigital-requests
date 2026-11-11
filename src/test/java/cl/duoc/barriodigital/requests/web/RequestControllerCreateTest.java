@@ -4,6 +4,7 @@ import cl.duoc.barriodigital.requests.config.ClockConfig;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.service.ImageAttachmentSanitizer;
 import cl.duoc.barriodigital.requests.service.RequestActivityService;
+import cl.duoc.barriodigital.requests.service.RequestAssignmentService;
 import cl.duoc.barriodigital.requests.service.RequestCreationOrchestrationService;
 import cl.duoc.barriodigital.requests.service.RequestService;
 import cl.duoc.barriodigital.requests.service.StaffMemberService;
@@ -52,6 +53,9 @@ class RequestControllerCreateTest {
 
     @MockBean
     private StaffMemberService staffMembers;
+
+    @MockBean
+    private RequestAssignmentService assignment;
 
     @Test
     void postGuardaElEmailDelHeaderYLoDevuelve() throws Exception {

@@ -1,5 +1,6 @@
 package cl.duoc.barriodigital.requests.service;
 
+import cl.duoc.barriodigital.requests.domain.ActivityVisibility;
 import cl.duoc.barriodigital.requests.domain.ActivityKind;
 import cl.duoc.barriodigital.requests.domain.ContactChannel;
 import cl.duoc.barriodigital.requests.domain.ContactResult;
@@ -139,6 +140,68 @@ class RequestActivityServiceTest {
     }
 
     @Test
+    void cadaRolVeUnaSolaFilaDeLaAsignacionYElStaffElTiempoDeAsignacion() {
+        MunicipalRequest request = request();
+        when(requests.findById(request.getId())).thenReturn(Optional.of(request));
+        Instant assignedAt = request.getCreatedAt().plusSeconds(300);
+        when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
+                RequestActivity.created(request.getId(), request.getCreatedAt(), "vecino-1", "Vecino Uno"),
+                RequestActivity.assigned(request.getId(), assignedAt, "func", "Ana", "func", "Ana", null, null, null),
+                RequestActivity.assignmentMilestone(request.getId(), assignedAt)
+        ));
+
+        ActividadView vecino = service.get(request.getId(), new CallerContext("vecino-1", "Vecino"));
+        ActividadView staff = service.get(request.getId(), new CallerContext("adm-1", "Admin"));
+
+        assertEquals(2, vecino.eventos().size());
+        ActividadView.EventoView milestone = vecino.eventos().get(1);
+        assertEquals("Tu solicitud fue asignada para su atención", milestone.summary());
+        assertNull(milestone.actorId());
+        assertEquals("Municipalidad", milestone.actorName());
+        assertNull(milestone.assigneeId());
+        assertNull(vecino.tiempos().primeraAsignacionSegundos());
+        assertEquals(false, vecino.tiempos().noCalculado().stream().anyMatch(text -> text.contains("asignación")));
+
+        assertEquals(2, staff.eventos().size());
+        ActividadView.EventoView internal = staff.eventos().get(1);
+        assertEquals(ActivityVisibility.INTERNO, internal.visibility());
+        assertEquals("Tomó el trámite", internal.summary());
+        assertEquals("func", internal.assigneeId());
+        assertEquals("Ana", internal.assigneeName());
+        assertEquals(300, staff.tiempos().primeraAsignacionSegundos());
+        assertEquals(false, staff.tiempos().noCalculado().stream().anyMatch(text -> text.contains("asignación")));
+    }
+
+    @Test
+    void sinAsignacionElStaffVeQueElTiempoNoSeCalcula() {
+        MunicipalRequest request = request();
+        when(requests.findById(request.getId())).thenReturn(Optional.of(request));
+        when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
+                RequestActivity.created(request.getId(), request.getCreatedAt(), "vecino-1", "Vecino Uno")));
+
+        ActividadView staff = service.get(request.getId(), new CallerContext("func", "Funcionario"));
+
+        assertNull(staff.tiempos().primeraAsignacionSegundos());
+        assertEquals(true, staff.tiempos().noCalculado()
+                .contains("Tiempo de asignación: el expediente todavía no tiene responsable."));
+    }
+
+    @Test
+    void elFuncionarioQueNoEsElResponsableNoRegistraGestiones() {
+        MunicipalRequest request = request();
+        when(requests.findByIdForUpdate(request.getId())).thenReturn(Optional.of(request));
+
+        ResponseStatusException error = assertThrows(ResponseStatusException.class, () -> service.registerGestion(
+                request.getId(),
+                new RegisterGestionDto(ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, null, null),
+                new CallerContext("otro-func", "Funcionario")));
+
+        assertEquals(403, error.getStatusCode().value());
+        assertEquals("Solo el responsable del tramite puede operarlo", error.getReason());
+        verify(activity, never()).save(any(RequestActivity.class));
+    }
+
+    @Test
     void elFuncionarioVeElIntentoYLaPrimeraAtencion() {
         MunicipalRequest request = request();
         when(requests.findById(request.getId())).thenReturn(Optional.of(request));
@@ -273,7 +336,10 @@ class RequestActivityServiceTest {
         assertNull(tiempos.desdeElIngresoSegundos());
     }
 
+    /** Trámite del vecino "vecino-1", a cargo del Funcionario "func" que operan estos tests. */
     private static MunicipalRequest request() {
-        return new MunicipalRequest("t", "d", "bache", "dir", "vecino-1", "Vecino", "v@example.com", "Bache");
+        MunicipalRequest request = new MunicipalRequest("t", "d", "bache", "dir", "vecino-1", "Vecino", "v@example.com", "Bache");
+        request.assignTo("func", "Ana");
+        return request;
     }
 }

@@ -4,6 +4,7 @@ import cl.duoc.barriodigital.requests.config.ClockConfig;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.service.ImageAttachmentSanitizer;
 import cl.duoc.barriodigital.requests.service.RequestActivityService;
+import cl.duoc.barriodigital.requests.service.RequestAssignmentService;
 import cl.duoc.barriodigital.requests.service.RequestCreationOrchestrationService;
 import cl.duoc.barriodigital.requests.service.RequestService;
 import cl.duoc.barriodigital.requests.service.StaffMemberService;
@@ -13,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
@@ -24,6 +26,8 @@ import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -50,6 +54,9 @@ class RequestControllerViewTest {
     @MockBean
     private StaffMemberService staffMembers;
 
+    @MockBean
+    private RequestAssignmentService assignment;
+
     @Test
     void elDetalleNoEntregaElCorreoAlAuditorYSiAlFuncionario() throws Exception {
         when(requestService.getById(eq("id-1"), any())).thenReturn(stored());
@@ -71,7 +78,7 @@ class RequestControllerViewTest {
 
     @Test
     void elListadoTambienSaleProyectado() throws Exception {
-        when(requestService.list(isNull(), isNull(), isNull(), any())).thenReturn(List.of(stored()));
+        when(requestService.list(isNull(), isNull(), isNull(), isNull(), any())).thenReturn(List.of(stored()));
 
         mockMvc.perform(get("/api/requests")
                         .header(CallerContext.HEADER_USER_ID, "aud-1")
@@ -95,6 +102,41 @@ class RequestControllerViewTest {
                 .andExpect(jsonPath("$[0].length()").value(2));
 
         verifyNoInteractions(requestService);
+    }
+
+    @Test
+    void takeYAssigneeRespondenConLaVistaDelTramite() throws Exception {
+        MunicipalRequest taken = stored();
+        taken.assignTo("func-1", "Ana");
+        when(assignment.take(eq("id-1"), any())).thenReturn(taken);
+        when(assignment.assign(eq("id-1"), any(), any())).thenReturn(taken);
+
+        mockMvc.perform(post("/api/requests/id-1/take")
+                        .header(CallerContext.HEADER_USER_ID, "func-1")
+                        .header(CallerContext.HEADER_USER_ROLES, "Funcionario"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.hasAssignee").value(true))
+                .andExpect(jsonPath("$.assigneeId").value("func-1"));
+
+        mockMvc.perform(put("/api/requests/id-1/assignee")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(CallerContext.HEADER_USER_ID, "adm-1")
+                        .header(CallerContext.HEADER_USER_ROLES, "Admin")
+                        .content("{\"assigneeId\":\"func-1\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.assigneeName").value("Ana"));
+    }
+
+    @Test
+    void unReasonDeMasDe500SeRechazaConValidAntesDelServicio() throws Exception {
+        mockMvc.perform(put("/api/requests/id-1/assignee")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(CallerContext.HEADER_USER_ID, "adm-1")
+                        .header(CallerContext.HEADER_USER_ROLES, "Admin")
+                        .content("{\"assigneeId\":\"func-1\",\"reason\":\"" + "x".repeat(501) + "\"}"))
+                .andExpect(status().isBadRequest());
+
+        verifyNoInteractions(assignment);
     }
 
     private static MunicipalRequest stored() {

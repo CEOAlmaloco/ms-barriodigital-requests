@@ -6,5 +6,7 @@ package cl.duoc.barriodigital.requests.domain;
 public enum ActivityKind {
     CREADO,
     ESTADO,
-    GESTION
+    GESTION,
+    /** Toma, asignación o reasignación del responsable (contrato EP3-05, sección 6). */
+    ASIGNACION
 }

@@ -24,22 +24,30 @@ class RequestViewJsonTest {
     @Autowired
     ObjectMapper mapper;
 
+    /** Campos del JSON de trámites que el BFF y el frontend ya reciben, en su orden, incluido el folio de EP3-28. */
+    private static final List<String> CURRENT_FIELDS = List.of(
+            "id", "folio", "title", "description", "procedureType", "procedureLabel", "address", "sector",
+            "locationReference", "latitude", "longitude", "locationPrecision", "solicitanteId", "solicitanteNombre",
+            "solicitanteEmail", "status", "rejectionReason", "hasAttachment", "createdAt", "updatedAt");
+
     @Test
-    void conservaLosCamposYValoresDeLaEntidadIncluidoElFolioYSumaElResponsable() throws Exception {
+    void conservaLosCamposYValoresActualesIncluidoElFolioYSumaElResponsableAlFinal() throws Exception {
         MunicipalRequest request = request();
+        request.assignTo("oid-func", "Ana Funcionaria");
 
         JsonNode entity = mapper.valueToTree(request);
         JsonNode view = mapper.valueToTree(RequestView.of(request, new CallerContext("func-1", "Funcionario")));
 
-        List<String> entityFields = names(entity);
-        List<String> extra = new ArrayList<>(names(view));
-        extra.removeAll(entityFields);
-        assertTrue(entityFields.contains("folio"));
-        assertEquals(List.of("hasAssignee", "assigneeId", "assigneeName"), extra);
-        for (String field : entityFields) {
+        List<String> expected = new ArrayList<>(CURRENT_FIELDS);
+        expected.addAll(List.of("hasAssignee", "assigneeId", "assigneeName"));
+        assertEquals(expected, names(view));
+        for (String field : CURRENT_FIELDS) {
             assertEquals(entity.get(field), view.get(field), field);
         }
-        assertFalse(view.get("hasAssignee").booleanValue());
+        assertEquals("BD-2026-000123", view.get("folio").asText());
+        assertTrue(view.get("hasAssignee").booleanValue());
+        assertEquals("oid-func", view.get("assigneeId").asText());
+        assertEquals("Ana Funcionaria", view.get("assigneeName").asText());
     }
 
     @Test
@@ -53,12 +61,19 @@ class RequestViewJsonTest {
     }
 
     @Test
-    void elVecinoNoRecibeQuienEsElResponsable() {
-        RequestView view = RequestView.of(request(), new CallerContext("vecino-1", "Vecino"));
+    void elVecinoSabeQueHayResponsablePeroNoQuienEs() {
+        MunicipalRequest request = request();
+        assertFalse(RequestView.of(request, new CallerContext("vecino-1", "Vecino")).hasAssignee());
 
-        assertFalse(view.hasAssignee());
-        assertEquals(null, view.assigneeId());
-        assertEquals(null, view.assigneeName());
+        request.assignTo("oid-func", "Ana Funcionaria");
+        RequestView vecino = RequestView.of(request, new CallerContext("vecino-1", "Vecino"));
+        RequestView auditor = RequestView.of(request, new CallerContext("aud-1", "Auditor"));
+
+        assertTrue(vecino.hasAssignee());
+        assertEquals(null, vecino.assigneeId());
+        assertEquals(null, vecino.assigneeName());
+        assertEquals("oid-func", auditor.assigneeId());
+        assertEquals("Ana Funcionaria", auditor.assigneeName());
     }
 
     private static MunicipalRequest request() {

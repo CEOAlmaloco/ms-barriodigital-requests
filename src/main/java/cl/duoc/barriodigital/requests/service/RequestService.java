@@ -46,6 +46,10 @@ public class RequestService {
     /** Tope de las columnas solicitante_nombre y actor_name. */
     static final int NAME_MAX = 200;
 
+    /** Valores del filtro assignee del listado. */
+    static final String ASSIGNEE_ME = "me";
+    static final String ASSIGNEE_NONE = "none";
+
     /** Tope de intervention_reason, igual que rejectionReason. */
     static final int INTERVENTION_REASON_MAX = 500;
 
@@ -165,22 +169,37 @@ public class RequestService {
     /**
      * Lista trámites. Quien no es personal solo ve los suyos.
      * from y to son días civiles en America/Santiago y los dos se incluyen completos.
+     * assignee (solo staff, EP3-05 sección 8): me son los trámites de quien llama y none los que no tienen responsable.
+     * Para el Admin y el Auditor, me es vacío, porque nunca son responsables.
      */
     @Transactional(readOnly = true)
     public List<MunicipalRequest> list(
             RequestStatus status,
             LocalDate from,
             LocalDate to,
+            String assignee,
             CallerContext caller
     ) {
         requireUserId(caller);
+        String assigneeId = null;
+        String unassigned = null;
+        if (assignee != null && !assignee.isBlank()) {
+            if (!caller.isStaff()) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "El filtro assignee es solo para staff");
+            }
+            switch (assignee.trim()) {
+                case ASSIGNEE_ME -> assigneeId = caller.userId().trim();
+                case ASSIGNEE_NONE -> unassigned = ASSIGNEE_NONE;
+                default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "assignee debe ser me o none");
+            }
+        }
 
         Instant fromInstant = from == null ? null : startOfCivilDay(from);
         // Inicio del día siguiente, sin incluirlo: cubre el día entero, con microsegundos y cambios de hora.
         Instant beforeInstant = to == null ? null : startOfCivilDay(to.plusDays(1));
 
         String ownerFilter = caller.mustFilterOwnRequests() ? caller.userId().trim() : null;
-        return repository.search(status, fromInstant, beforeInstant, ownerFilter);
+        return repository.search(status, fromInstant, beforeInstant, ownerFilter, assigneeId, unassigned);
     }
 
     /** Primer instante del día en Chile. Si ese día la medianoche no existe por el cambio de hora, es la 01:00. */
@@ -191,7 +210,8 @@ public class RequestService {
     /**
      * Cambia el estado. Lo hace el Funcionario, o el Admin como intervención con interventionReason (EP3-04, sección 3).
      * Si el estado es RECHAZADO, el motivo es obligatorio y no supera 500 caracteres. Bloquea la fila para que dos cambios no se pisen.
-     * Orden de errores de EP3-04, sección 5: 403 por rol, 400 por body, 404 y 409.
+     * Orden de errores de EP3-04, sección 5: 403 por rol, 400 por body, 404, 403 si el Funcionario no es el responsable
+     * y 409.
      */
     @Transactional
     public MunicipalRequest changeStatus(
@@ -226,6 +246,7 @@ public class RequestService {
         // El bloqueo cubre lectura, validación y escritura de cualquier transición del mismo trámite.
         MunicipalRequest found = repository.findByIdForUpdate(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado"));
+        requireResponsible(found, caller);
 
         if (!RequestTransitions.isAllowed(found.getStatus(), target)) {
             throw new ResponseStatusException(
@@ -327,6 +348,17 @@ public class RequestService {
         }
         String fromId = blankToNull(solicitanteId);
         return fromId != null ? fromId : "Sin nombre";
+    }
+
+    /**
+     * Solo el responsable opera (EP3-04, sección 3). Se llama con la fila ya bloqueada, en la misma transacción
+     * que la operación: así una reasignación simultánea no deja pasar al responsable anterior. El Admin opera
+     * cualquier trámite como intervención.
+     */
+    static void requireResponsible(MunicipalRequest request, CallerContext caller) {
+        if (caller.isFuncionario() && !caller.userId().trim().equals(request.getAssigneeId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo el responsable del tramite puede operarlo");
+        }
     }
 
     /**
