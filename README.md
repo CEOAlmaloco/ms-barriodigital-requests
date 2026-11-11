@@ -29,6 +29,7 @@ notepad .env
 | `RABBIT_ADDRESSES` | Broker AMQP. En local, `localhost:5672` |
 | `RABBIT_USER` | Usuario de RabbitMQ |
 | `RABBIT_PASSWORD` | Password de RabbitMQ |
+| `KAFKA_BOOTSTRAP_SERVERS` | Brokers de Kafka. En local, `localhost:9092,localhost:9093,localhost:9094` |
 
 Ejemplo de formato (cambia las rutas y el alias por los tuyos):
 
@@ -331,7 +332,7 @@ Implementa la mitad de requests de los contratos EP3-01 (eventos) y EP3-02 (publ
 `barriodigital-infra/docs/decisiones.md`. Cada hecho del trámite se guarda como una fila de `outbox_events` **en la
 misma transacción** que el cambio y su marca del expediente: o quedan los tres, o ninguno. Un rollback, una falla al
 escribir el outbox o una transición rechazada (409) no dejan evento. El relay que publica en `requests.events` es
-EP3-32: hasta entonces, los eventos esperan en la tabla y después salen en orden.
+EP3-32 (sección siguiente).
 
 | Operación | Evento | Comandos de RabbitMQ |
 |---|---|---|
@@ -376,8 +377,35 @@ En los tests, `src/test/resources/db/h2-outbox-events.sql` crea la misma tabla e
 
 1. **Trámites anteriores a EP3-31:** no tienen eventos, así que report y audit parten desde el despliegue
    (EP3-06, límite 1). Un backfill con eventos marcados como reconstruidos es una mejora futura.
-2. **Hasta EP3-32 nada se publica en Kafka:** la tabla crece con eventos pendientes. El relay los publica en orden, y
-   la limpieza y el health `outbox` también son de EP3-32.
+
+## Relay a Kafka (EP3-32)
+
+`OutboxRelay` publica cada 1 s hasta 100 pendientes de `outbox_events` en `requests.events`, en orden de
+`event_sequence`, con key `requestId` y `sequence` agregado al sobre. Marca `published_at` solo con la confirmación
+del broker (máximo 10 s).
+
+- **Falla de envío:** suma `attempts`, guarda `last_error` y detiene el lote.
+- **Kafka confirmó pero Oracle no marcó:** detiene el lote sin sumar `attempts`. El evento se reenvía primero en el
+  siguiente ciclo y el duplicado se descarta por `eventId`.
+- **Kafka caído:** requests arranca y responde normal. El relay reintenta tras 1, 2, 4, 8, 16 y 30 s, y registra
+  `relay-detenido` una vez por racha y `relay-reanudado` al recuperarse.
+
+**Productor:** `acks=all`, idempotencia, `max.block.ms=5000`, `request.timeout.ms=5000`, `delivery.timeout.ms=10000`,
+sin `NewTopic` y con `spring.kafka.admin.auto-create=false`. `KafkaConfig` impide arrancar si `max.block.ms` o
+`delivery.timeout.ms` superan la espera de 10 s, o si `delivery.timeout.ms` es menor que `linger.ms +
+request.timeout.ms`.
+
+**Limpieza:** a las 03:30 de `America/Santiago` borra los publicados hace más de 7 días. Los pendientes no se borran.
+
+**Health:** `/actuator/health` incluye `outbox` con `pendientes` y `antiguedadMasViejoSegundos`, sin cambiar el `UP`.
+`show-details` pasa a `always`; el 8081 no es público.
+
+**Límites conocidos**
+
+1. **Una sola instancia:** con más, la lectura debe usar `SELECT ... FOR UPDATE SKIP LOCKED`.
+2. **Duplicados posibles:** un corte o una falla de Oracle después de la confirmación reenvía el evento.
+3. **Compose:** `apps/compose*.yml` aún no pasa `KAFKA_BOOTSTRAP_SERVERS` (EP3-54); sin ella los eventos esperan en el
+   outbox.
 
 ## Concurrencia de estado (EP1.5-18)
 
