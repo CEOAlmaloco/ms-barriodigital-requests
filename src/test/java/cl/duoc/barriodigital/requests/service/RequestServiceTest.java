@@ -1,5 +1,6 @@
 package cl.duoc.barriodigital.requests.service;
 
+import cl.duoc.barriodigital.requests.TestListQueries;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestActivity;
 import cl.duoc.barriodigital.requests.domain.RequestAttachment;
@@ -20,9 +21,14 @@ import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.ArgumentMatchers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
@@ -36,6 +42,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import static cl.duoc.barriodigital.requests.TestListQueries.query;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
@@ -48,8 +55,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -591,20 +598,21 @@ class RequestServiceTest {
             "2026-09-06, 2026-09-06T04:00:00Z, 2026-09-07T03:00:00Z",
             "2026-04-04, 2026-04-04T03:00:00Z, 2026-04-05T04:00:00Z"
     })
-    void listFiltraDiasCompletosEnHoraDeChileInclusoConCambioDeHora(LocalDate day, String from, String before) {
-        requestService.list(null, day, day, null, new CallerContext("func", "Funcionario"));
-
-        verify(repository).search(isNull(), eq(Instant.parse(from)), eq(Instant.parse(before)), isNull(), isNull(), isNull());
+    void unDiaVaDeSuMedianocheALaSiguienteEnHoraDeChileInclusoConCambioDeHora(LocalDate day, String from, String before) {
+        assertEquals(Instant.parse(from), RequestService.startOfCivilDay(day));
+        assertEquals(Instant.parse(before), RequestService.startOfCivilDay(day.plusDays(1)));
     }
 
     @Test
     void getByIdYListadoDevuelvenElNombreYaGuardado() {
         MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-1", "Alex Ampuero");
         when(repository.findById("id-1")).thenReturn(Optional.of(stored));
-        when(repository.search(isNull(), isNull(), isNull(), eq("oid-1"), isNull(), isNull())).thenReturn(List.of(stored));
+        when(repository.findAll(ArgumentMatchers.<Specification<MunicipalRequest>>any(), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(stored)));
 
         MunicipalRequest byId = requestService.getById("id-1", new CallerContext("oid-1", "Vecino", "Otro"));
-        List<MunicipalRequest> listed = requestService.list(null, null, null, null, new CallerContext("oid-1", "Vecino", "Otro"));
+        List<MunicipalRequest> listed = requestService.list(TestListQueries.all(), new CallerContext("oid-1", "Vecino", "Otro"))
+                .getContent();
 
         assertEquals("Alex Ampuero", byId.getSolicitanteNombre());
         assertEquals("Alex Ampuero", listed.get(0).getSolicitanteNombre());
@@ -696,31 +704,6 @@ class RequestServiceTest {
         assertArrayEquals(imageBytes, downloaded.content());
         assertEquals("image/png", downloaded.contentType());
         assertEquals("evidencia.png", downloaded.fileName());
-    }
-
-    @Test
-    void listVecinoFuerzaFiltroPorSolicitante() {
-        when(repository.search(eq(RequestStatus.INGRESADO), any(), any(), eq("mi-oid"), isNull(), isNull()))
-                .thenReturn(List.of());
-
-        requestService.list(
-                RequestStatus.INGRESADO,
-                LocalDate.of(2026, 9, 1),
-                LocalDate.of(2026, 9, 13),
-                null,
-                new CallerContext("mi-oid", "Vecino")
-        );
-
-        verify(repository).search(eq(RequestStatus.INGRESADO), any(), any(), eq("mi-oid"), isNull(), isNull());
-    }
-
-    @Test
-    void listFuncionarioNoFiltraPorSolicitante() {
-        when(repository.search(isNull(), isNull(), isNull(), isNull(), isNull(), isNull())).thenReturn(List.of());
-
-        requestService.list(null, null, null, null, new CallerContext("func", "Funcionario"));
-
-        verify(repository).search(isNull(), isNull(), isNull(), isNull(), isNull(), isNull());
     }
 
     @Test
@@ -878,28 +861,60 @@ class RequestServiceTest {
     }
 
     @Test
-    void elFiltroAssigneeMeUsaElOidDeQuienLlamaYNoneLosSinResponsable() {
-        CallerContext funcionario = new CallerContext("func", "Funcionario");
-
-        requestService.list(null, null, null, " me ", funcionario);
-        requestService.list(null, null, null, "none", funcionario);
-
-        verify(repository).search(isNull(), isNull(), isNull(), isNull(), eq("func"), isNull());
-        verify(repository).search(isNull(), isNull(), isNull(), isNull(), isNull(), eq("none"));
-    }
-
-    @Test
     void elFiltroAssigneeEsSoloParaStaffYSoloAceptaMeONone() {
         ResponseStatusException vecino = assertThrows(ResponseStatusException.class, () ->
-                requestService.list(null, null, null, "me", new CallerContext("vecino-1", "Vecino")));
+                requestService.list(query().assignee("me").build(), new CallerContext("vecino-1", "Vecino")));
         ResponseStatusException invalid = assertThrows(ResponseStatusException.class, () ->
-                requestService.list(null, null, null, "oid-ana", new CallerContext("func", "Funcionario")));
+                requestService.list(query().assignee("oid-ana").build(), new CallerContext("func", "Funcionario")));
 
         assertEquals(403, vecino.getStatusCode().value());
         assertEquals("El filtro assignee es solo para staff", vecino.getReason());
         assertEquals(400, invalid.getStatusCode().value());
         assertEquals("assignee debe ser me o none", invalid.getReason());
         verifyNoInteractions(repository);
+    }
+
+    @Test
+    void elListadoRechazaParametrosInvalidosConElMensajeDelContrato() {
+        CallerContext funcionario = new CallerContext("func", "Funcionario");
+        LocalDate day = LocalDate.of(2026, 11, 6);
+
+        assertListRejected(query().page(-1), funcionario, "page debe ser 0 o mayor");
+        assertListRejected(query().size(0), funcionario, "size debe estar entre 1 y 50");
+        assertListRejected(query().size(51), funcionario, "size debe estar entre 1 y 50");
+        assertListRejected(query().open("si"), funcionario, "open debe ser true o false");
+        assertListRejected(query().open("TRUE"), funcionario, "open debe ser true o false");
+        assertListRejected(query().q("a".repeat(101)), funcionario, "q no puede superar 100 caracteres");
+        assertListRejected(query().sector("Ralco"), funcionario, "sector no es valido");
+        assertListRejected(query().from(day.plusDays(1)).to(day), funcionario, "from no puede ser posterior a to");
+        for (String sort : List.of("title", "createdAt,up", "createdAt,", "status,asc,folio", ",asc", "solicitanteEmail")) {
+            assertListRejected(query().sort(sort), funcionario, "sort no es valido");
+        }
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void elListadoAceptaLosBordesYPideLaPaginaSinOrden() {
+        when(repository.findAll(ArgumentMatchers.<Specification<MunicipalRequest>>any(), any(Pageable.class)))
+                .thenReturn(Page.empty());
+        CallerContext funcionario = new CallerContext("func", "Funcionario");
+        LocalDate day = LocalDate.of(2026, 11, 6);
+
+        requestService.list(query().page(0).size(1).q("a".repeat(100)).from(day).to(day).build(), funcionario);
+        requestService.list(query().size(50).open("false").sector("villa-ralco").sort("folio,DESC").build(), funcionario);
+        requestService.list(query().q("   ").open(" ").sector("").sort("status").build(), funcionario);
+
+        ArgumentCaptor<Pageable> pages = ArgumentCaptor.forClass(Pageable.class);
+        verify(repository, times(3)).findAll(ArgumentMatchers.<Specification<MunicipalRequest>>any(), pages.capture());
+        assertEquals(List.of(1, 50, 20), pages.getAllValues().stream().map(Pageable::getPageSize).toList());
+        assertTrue(pages.getAllValues().stream().allMatch(page -> page.getSort().isUnsorted()));
+    }
+
+    private void assertListRejected(TestListQueries params, CallerContext caller, String message) {
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> requestService.list(params.build(), caller));
+        assertEquals(400, error.getStatusCode().value());
+        assertEquals(message, error.getReason());
     }
 
     @ParameterizedTest

@@ -36,6 +36,11 @@ public final class RequestTransitions {
         return ALLOWED.getOrDefault(from, Set.of()).contains(to);
     }
 
+    /** Indica si el trámite está cerrado: su estado ya no continúa (RESUELTO o RECHAZADO). */
+    public static boolean isClosed(RequestStatus status) {
+        return ALLOWED.getOrDefault(status, Set.of()).isEmpty();
+    }
+
     /** Devuelve los estados a los que se puede pasar desde este. */
     public static Set<RequestStatus> next(RequestStatus from) {
         return Set.copyOf(ALLOWED.getOrDefault(from, Set.of()));

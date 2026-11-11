@@ -11,10 +11,15 @@ import cl.duoc.barriodigital.requests.domain.RequestTransitions;
 import cl.duoc.barriodigital.requests.messaging.EventPublisher;
 import cl.duoc.barriodigital.requests.messaging.RequestEventPayload;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
+import cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications.SortField;
 import cl.duoc.barriodigital.requests.persistence.RequestAttachmentRepository;
 import cl.duoc.barriodigital.requests.persistence.RequestActivityRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,6 +35,18 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
+
+import static cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications.assignedTo;
+import static cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications.createdBefore;
+import static cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications.createdFrom;
+import static cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications.matches;
+import static cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications.open;
+import static cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications.orderedBy;
+import static cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications.ownedBy;
+import static cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications.procedureTypeIs;
+import static cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications.sectorIs;
+import static cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications.statusIs;
+import static cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications.unassigned;
 
 /**
  * Crea trámites, los consulta y cambia su estado.
@@ -49,6 +66,11 @@ public class RequestService {
     /** Valores del filtro assignee del listado. */
     static final String ASSIGNEE_ME = "me";
     static final String ASSIGNEE_NONE = "none";
+
+    /** Página del listado (EP3-07, sección 2.1) y largo máximo de q. */
+    static final int LIST_DEFAULT_SIZE = 20;
+    static final int LIST_MAX_SIZE = 50;
+    static final int LIST_SEARCH_MAX = 100;
 
     /** Tope de intervention_reason, igual que rejectionReason. */
     static final int INTERVENTION_REASON_MAX = 500;
@@ -167,39 +189,125 @@ public class RequestService {
     }
 
     /**
-     * Lista trámites. Quien no es personal solo ve los suyos.
+     * Lista trámites por página (EP3-30). Quien no es personal solo ve los suyos.
      * from y to son días civiles en America/Santiago y los dos se incluyen completos.
      * assignee (solo staff, EP3-05 sección 8): me son los trámites de quien llama y none los que no tienen responsable.
      * Para el Admin y el Auditor, me es vacío, porque nunca son responsables.
+     * Primero el 403 de assignee y después los 400, con los mensajes de EP3-07, sección 6.
      */
     @Transactional(readOnly = true)
-    public List<MunicipalRequest> list(
-            RequestStatus status,
-            LocalDate from,
-            LocalDate to,
-            String assignee,
-            CallerContext caller
-    ) {
+    public Page<MunicipalRequest> list(RequestListQuery params, CallerContext caller) {
         requireUserId(caller);
         String assigneeId = null;
-        String unassigned = null;
-        if (assignee != null && !assignee.isBlank()) {
+        boolean unassigned = false;
+        String assignee = blankToNull(params.assignee());
+        if (assignee != null) {
             if (!caller.isStaff()) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "El filtro assignee es solo para staff");
             }
-            switch (assignee.trim()) {
+            switch (assignee) {
                 case ASSIGNEE_ME -> assigneeId = caller.userId().trim();
-                case ASSIGNEE_NONE -> unassigned = ASSIGNEE_NONE;
-                default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "assignee debe ser me o none");
+                case ASSIGNEE_NONE -> unassigned = true;
+                default -> throw badRequest("assignee debe ser me o none");
             }
         }
+        if (params.from() != null && params.to() != null && params.from().isAfter(params.to())) {
+            throw badRequest("from no puede ser posterior a to");
+        }
+        Boolean open = parseOpen(params.open());
+        String text = parseSearchText(params.q());
+        String sector = parseSector(params.sector());
+        PageRequest pageable = pageRequest(params.page(), params.size());
+        Specification<MunicipalRequest> order = parseSort(params.sort());
 
-        Instant fromInstant = from == null ? null : startOfCivilDay(from);
+        Instant fromInstant = params.from() == null ? null : startOfCivilDay(params.from());
         // Inicio del día siguiente, sin incluirlo: cubre el día entero, con microsegundos y cambios de hora.
-        Instant beforeInstant = to == null ? null : startOfCivilDay(to.plusDays(1));
-
+        Instant beforeInstant = params.to() == null ? null : startOfCivilDay(params.to().plusDays(1));
         String ownerFilter = caller.mustFilterOwnRequests() ? caller.userId().trim() : null;
-        return repository.search(status, fromInstant, beforeInstant, ownerFilter, assigneeId, unassigned);
+
+        Specification<MunicipalRequest> spec = Specification.where(ownedBy(ownerFilter))
+                .and(statusIs(params.status()))
+                .and(open(open))
+                .and(createdFrom(fromInstant))
+                .and(createdBefore(beforeInstant))
+                .and(assignedTo(assigneeId))
+                .and(unassigned(unassigned))
+                .and(procedureTypeIs(ProcedureTypes.normalize(blankToNull(params.procedureType()))))
+                .and(sectorIs(sector))
+                .and(matches(text))
+                .and(order);
+        // Spring no acepta un offset mayor que un int. Esa página está fuera de rango: vacía, con el total real.
+        if (pageable.getOffset() > Integer.MAX_VALUE) {
+            return new PageImpl<>(List.of(), pageable, repository.count(spec));
+        }
+        return repository.findAll(spec, pageable);
+    }
+
+    /** open acepta solo true o false. */
+    static Boolean parseOpen(String raw) {
+        String value = blankToNull(raw);
+        if (value == null) {
+            return null;
+        }
+        return switch (value) {
+            case "true" -> true;
+            case "false" -> false;
+            default -> throw badRequest("open debe ser true o false");
+        };
+    }
+
+    static String parseSearchText(String raw) {
+        String text = blankToNull(raw);
+        if (text != null && text.length() > LIST_SEARCH_MAX) {
+            throw badRequest("q no puede superar " + LIST_SEARCH_MAX + " caracteres");
+        }
+        return text;
+    }
+
+    /** El sector es una de las claves de LocationRules, las mismas que acepta el alta. */
+    static String parseSector(String raw) {
+        String sector = blankToNull(raw);
+        if (sector != null && !LocationRules.SECTORS.containsKey(sector)) {
+            throw badRequest("sector no es valido");
+        }
+        return sector;
+    }
+
+    /** Página desde 0 y tamaño de 1 a 50, como en EP3-07, sección 2.1. Sin orden: lo pone parseSort. */
+    static PageRequest pageRequest(Integer page, Integer size) {
+        int pageNumber = page == null ? 0 : page;
+        int pageSize = size == null ? LIST_DEFAULT_SIZE : size;
+        if (pageNumber < 0) {
+            throw badRequest("page debe ser 0 o mayor");
+        }
+        if (pageSize < 1 || pageSize > LIST_MAX_SIZE) {
+            throw badRequest("size debe estar entre 1 y " + LIST_MAX_SIZE);
+        }
+        return PageRequest.of(pageNumber, pageSize);
+    }
+
+    /** sort es campo o campo,asc|desc, con createdAt, status o folio. Sin dirección es ascendente, como en Spring. */
+    static Specification<MunicipalRequest> parseSort(String raw) {
+        String value = blankToNull(raw);
+        if (value == null) {
+            return orderedBy(SortField.CREATED_AT, false);
+        }
+        String[] parts = value.split(",", -1);
+        SortField field = SortField.fromApiName(parts[0]);
+        if (field == null || parts.length > 2) {
+            throw badRequest("sort no es valido");
+        }
+        if (parts.length == 1 || parts[1].equalsIgnoreCase("asc")) {
+            return orderedBy(field, true);
+        }
+        if (parts[1].equalsIgnoreCase("desc")) {
+            return orderedBy(field, false);
+        }
+        throw badRequest("sort no es valido");
+    }
+
+    private static ResponseStatusException badRequest(String message) {
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST, message);
     }
 
     /** Primer instante del día en Chile. Si ese día la medianoche no existe por el cambio de hora, es la 01:00. */

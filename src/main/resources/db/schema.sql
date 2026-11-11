@@ -44,9 +44,10 @@ CREATE TABLE municipal_request_attachments (
         FOREIGN KEY (request_id) REFERENCES municipal_requests (id) ON DELETE CASCADE
 );
 
-CREATE INDEX idx_municipal_requests_status ON municipal_requests (status);
+-- Índices del listado (EP3-30), los mismos que declara MunicipalRequest: el del Vecino, el orden por defecto y la bandeja.
+CREATE INDEX idx_municipal_requests_solicitante_created ON municipal_requests (solicitante_id, created_at);
 CREATE INDEX idx_municipal_requests_created ON municipal_requests (created_at);
-CREATE INDEX idx_municipal_requests_solicitante ON municipal_requests (solicitante_id);
+CREATE INDEX idx_municipal_requests_assignee ON municipal_requests (assignee_id);
 
 -- Historial del expediente. Solo se inserta. La API no actualiza ni borra filas.
 CREATE TABLE request_activity (

@@ -1,6 +1,7 @@
 package cl.duoc.barriodigital.requests.service;
 
 import cl.duoc.barriodigital.requests.TestFolios;
+import cl.duoc.barriodigital.requests.TestListQueries;
 import cl.duoc.barriodigital.requests.domain.Folio;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
@@ -261,7 +262,7 @@ class RequestStatusEventsTransactionTest {
     void lecturasNoPublican() {
         MunicipalRequest initial = create(RequestStatus.INGRESADO);
         service.getById(initial.getId(), funcionario);
-        service.list(null, null, null, null, funcionario);
+        service.list(TestListQueries.all(), funcionario);
         verifyNoInteractions(publisher);
     }
 
