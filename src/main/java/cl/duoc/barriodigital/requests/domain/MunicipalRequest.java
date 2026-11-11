@@ -126,6 +126,13 @@ public class MunicipalRequest {
     @Column(name = "assignee_name", length = 200)
     private String assigneeName;
 
+    /**
+     * Plazo de atención del tipo al momento del alta, en días hábiles (EP3-06, sección 1.3). Snapshot: editar el
+     * tipo después no lo cambia. Null si el tipo no tenía plazo o si el trámite es anterior a EP3-31.
+     */
+    @Column(name = "sla_business_days")
+    private Integer slaBusinessDays;
+
     /** Indica si el trámite tiene una imagen privada asociada en su propia tabla. */
     @Column(name = "has_attachment", nullable = false, columnDefinition = "NUMBER(1) DEFAULT 0")
     private boolean hasAttachment;
@@ -393,6 +400,15 @@ public class MunicipalRequest {
         return hasAttachment;
     }
 
+    public Integer getSlaBusinessDays() {
+        return slaBusinessDays;
+    }
+
+    /** Guarda el plazo del tipo en el alta. Ya viene validado: entre 1 y 120, o null. */
+    public void snapshotSlaBusinessDays(Integer slaBusinessDays) {
+        this.slaBusinessDays = slaBusinessDays;
+    }
+
     /** Actualiza la presencia de la imagen al crear el trámite y su adjunto en la misma transacción. */
     public void setHasAttachment(boolean hasAttachment) {
         this.hasAttachment = hasAttachment;
@@ -408,6 +424,7 @@ public class MunicipalRequest {
     public void applyStatus(RequestStatus next, String rejectionReason) {
         this.status = next;
         this.rejectionReason = next == RequestStatus.RECHAZADO ? rejectionReason : null;
-        this.updatedAt = Instant.now();
+        // Es también el instante de la marca ESTADO y de request.status-changed.
+        this.updatedAt = StoredInstant.now();
     }
 }

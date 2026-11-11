@@ -35,7 +35,8 @@ public record RequestView(
         Instant updatedAt,
         boolean hasAssignee,
         String assigneeId,
-        String assigneeName
+        String assigneeName,
+        Integer slaBusinessDays
 ) {
 
     /** Arma la vista según el rol de quien llama. */
@@ -66,7 +67,9 @@ public record RequestView(
                 // El Vecino sabe si hay responsable ("En atención"), pero no quién es (EP3-04, sección 6.1).
                 request.hasAssignee(),
                 staff ? request.getAssigneeId() : null,
-                staff ? request.getAssigneeName() : null
+                staff ? request.getAssigneeName() : null,
+                // Snapshot del alta, para los cuatro roles (EP3-04, sección 6.1, y EP3-06, sección 7).
+                request.getSlaBusinessDays()
         );
     }
 }

@@ -1,12 +1,13 @@
 package cl.duoc.barriodigital.requests.service;
 
-import cl.duoc.barriodigital.requests.domain.ActivityVisibility;
 import cl.duoc.barriodigital.requests.domain.ActivityKind;
+import cl.duoc.barriodigital.requests.domain.ActivityVisibility;
 import cl.duoc.barriodigital.requests.domain.ContactChannel;
 import cl.duoc.barriodigital.requests.domain.ContactResult;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestActivity;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
+import cl.duoc.barriodigital.requests.messaging.DomainEventRecorder;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.persistence.RequestActivityRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
@@ -37,7 +38,8 @@ class RequestActivityServiceTest {
 
     private final MunicipalRequestRepository requests = mock(MunicipalRequestRepository.class);
     private final RequestActivityRepository activity = mock(RequestActivityRepository.class);
-    private final RequestActivityService service = new RequestActivityService(requests, activity);
+    private final DomainEventRecorder events = mock(DomainEventRecorder.class);
+    private final RequestActivityService service = new RequestActivityService(requests, activity, events);
 
     private static final CallerContext FUNCIONARIO = new CallerContext("func", "Funcionario", "Ana%20Mar%C3%ADa");
 
@@ -47,8 +49,8 @@ class RequestActivityServiceTest {
         when(requests.findById(request.getId())).thenReturn(Optional.of(request));
         Instant created = request.getCreatedAt();
         when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
-                RequestActivity.created(request.getId(), created, "vecino", "Vecino"),
-                RequestActivity.gestion(request.getId(), created.plusSeconds(60), "func", "Ana",
+                RequestActivity.created(request.getId(), created, "vecino", "Vecino", "Vecino"),
+                RequestActivity.gestion(request.getId(), created.plusSeconds(60), "func", "Ana", "Funcionario",
                         ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, "nota interna", created.plusSeconds(3600), null)
         ));
 
@@ -66,8 +68,8 @@ class RequestActivityServiceTest {
         when(requests.findById(request.getId())).thenReturn(Optional.of(request));
         Instant created = request.getCreatedAt();
         when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
-                RequestActivity.created(request.getId(), created, "vecino-1", "Vecino Uno"),
-                RequestActivity.statusChanged(request.getId(), created.plusSeconds(60), "oid-func", "Ana Funcionaria",
+                RequestActivity.created(request.getId(), created, "vecino-1", "Vecino Uno", "Vecino"),
+                RequestActivity.statusChanged(request.getId(), created.plusSeconds(60), "oid-func", "Ana Funcionaria", "Funcionario",
                         RequestStatus.INGRESADO, RequestStatus.ADMITIDO, null, null)
         ));
 
@@ -83,12 +85,32 @@ class RequestActivityServiceTest {
     }
 
     @Test
+    void elRolDelActorEsSoloParaStaffInclusoEnLasMarcasDelVecino() {
+        MunicipalRequest request = request();
+        when(requests.findById(request.getId())).thenReturn(Optional.of(request));
+        Instant created = request.getCreatedAt();
+        when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
+                RequestActivity.created(request.getId(), created, "vecino-1", "Vecino Uno", "Vecino"),
+                RequestActivity.statusChanged(request.getId(), created.plusSeconds(60), "adm-1", "Admin", "Admin",
+                        RequestStatus.INGRESADO, RequestStatus.ADMITIDO, null, "Reclamo en la OIRS")
+        ));
+
+        ActividadView vecino = service.get(request.getId(), new CallerContext("vecino-1", "Vecino"));
+        ActividadView auditor = service.get(request.getId(), new CallerContext("aud-1", "Auditor"));
+
+        assertNull(vecino.eventos().get(0).actorRole());
+        assertNull(vecino.eventos().get(1).actorRole());
+        assertEquals("Vecino", auditor.eventos().get(0).actorRole());
+        assertEquals("Admin", auditor.eventos().get(1).actorRole());
+    }
+
+    @Test
     void elMotivoDeIntervencionNoLlegaAlVecinoAunqueLaFilaSeaPublica() {
         MunicipalRequest request = request();
         when(requests.findById(request.getId())).thenReturn(Optional.of(request));
         Instant created = request.getCreatedAt();
         when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
-                RequestActivity.statusChanged(request.getId(), created.plusSeconds(60), "adm-1", "Admin",
+                RequestActivity.statusChanged(request.getId(), created.plusSeconds(60), "adm-1", "Admin", "Admin",
                         RequestStatus.INGRESADO, RequestStatus.RECHAZADO, "Duplicado", "Reclamo en la OIRS")
         ));
 
@@ -145,8 +167,8 @@ class RequestActivityServiceTest {
         when(requests.findById(request.getId())).thenReturn(Optional.of(request));
         Instant assignedAt = request.getCreatedAt().plusSeconds(300);
         when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
-                RequestActivity.created(request.getId(), request.getCreatedAt(), "vecino-1", "Vecino Uno"),
-                RequestActivity.assigned(request.getId(), assignedAt, "func", "Ana", "func", "Ana", null, null, null),
+                RequestActivity.created(request.getId(), request.getCreatedAt(), "vecino-1", "Vecino Uno", "Vecino"),
+                RequestActivity.assigned(request.getId(), assignedAt, "func", "Ana", "Funcionario", "func", "Ana", null, null, null),
                 RequestActivity.assignmentMilestone(request.getId(), assignedAt)
         ));
 
@@ -177,7 +199,7 @@ class RequestActivityServiceTest {
         MunicipalRequest request = request();
         when(requests.findById(request.getId())).thenReturn(Optional.of(request));
         when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
-                RequestActivity.created(request.getId(), request.getCreatedAt(), "vecino-1", "Vecino Uno")));
+                RequestActivity.created(request.getId(), request.getCreatedAt(), "vecino-1", "Vecino Uno", "Vecino")));
 
         ActividadView staff = service.get(request.getId(), new CallerContext("func", "Funcionario"));
 
@@ -207,8 +229,8 @@ class RequestActivityServiceTest {
         when(requests.findById(request.getId())).thenReturn(Optional.of(request));
         Instant created = request.getCreatedAt();
         when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
-                RequestActivity.created(request.getId(), created, "vecino", "Vecino"),
-                RequestActivity.gestion(request.getId(), created.plusSeconds(90), "func", "Ana",
+                RequestActivity.created(request.getId(), created, "vecino", "Vecino", "Vecino"),
+                RequestActivity.gestion(request.getId(), created.plusSeconds(90), "func", "Ana", "Funcionario",
                         ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, null, null, null)
         ));
 
@@ -322,10 +344,10 @@ class RequestActivityServiceTest {
         request.setStatus(RequestStatus.RESUELTO);
         Instant created = request.getCreatedAt();
         List<RequestActivity> events = List.of(
-                RequestActivity.created(request.getId(), created, "vecino", "Vecino"),
-                RequestActivity.statusChanged(request.getId(), created.plusSeconds(100), "func", "Ana",
+                RequestActivity.created(request.getId(), created, "vecino", "Vecino", "Vecino"),
+                RequestActivity.statusChanged(request.getId(), created.plusSeconds(100), "func", "Ana", "Funcionario",
                         RequestStatus.INGRESADO, RequestStatus.ADMITIDO, null, null),
-                RequestActivity.statusChanged(request.getId(), created.plusSeconds(400), "func", "Ana",
+                RequestActivity.statusChanged(request.getId(), created.plusSeconds(400), "func", "Ana", "Funcionario",
                         RequestStatus.EN_TERRENO, RequestStatus.RESUELTO, null, null)
         );
 

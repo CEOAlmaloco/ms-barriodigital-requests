@@ -6,6 +6,7 @@ import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestActivity;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.domain.StaffMember;
+import cl.duoc.barriodigital.requests.messaging.DomainEventRecorder;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.persistence.RequestActivityRepository;
 import cl.duoc.barriodigital.requests.persistence.StaffMemberRepository;
@@ -46,7 +47,8 @@ class RequestAssignmentServiceTest {
     private final MunicipalRequestRepository requests = mock(MunicipalRequestRepository.class);
     private final RequestActivityRepository activity = mock(RequestActivityRepository.class);
     private final StaffMemberRepository staff = mock(StaffMemberRepository.class);
-    private final RequestAssignmentService service = new RequestAssignmentService(requests, activity, staff);
+    private final DomainEventRecorder events = mock(DomainEventRecorder.class);
+    private final RequestAssignmentService service = new RequestAssignmentService(requests, activity, staff, events);
 
     private MunicipalRequest request;
 

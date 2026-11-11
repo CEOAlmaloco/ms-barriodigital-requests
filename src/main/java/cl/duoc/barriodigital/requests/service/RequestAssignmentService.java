@@ -4,6 +4,8 @@ import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestActivity;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.domain.StaffMember;
+import cl.duoc.barriodigital.requests.domain.StoredInstant;
+import cl.duoc.barriodigital.requests.messaging.DomainEventRecorder;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.persistence.RequestActivityRepository;
 import cl.duoc.barriodigital.requests.persistence.StaffMemberRepository;
@@ -17,6 +19,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Instant;
 import java.util.EnumSet;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * Toma, asignación y reasignación del responsable (contrato EP3-05, secciones 2 a 6).
@@ -34,15 +37,18 @@ public class RequestAssignmentService {
     private final MunicipalRequestRepository requests;
     private final RequestActivityRepository activity;
     private final StaffMemberRepository staff;
+    private final DomainEventRecorder events;
 
     public RequestAssignmentService(
             MunicipalRequestRepository requests,
             RequestActivityRepository activity,
-            StaffMemberRepository staff
+            StaffMemberRepository staff,
+            DomainEventRecorder events
     ) {
         this.requests = requests;
         this.activity = activity;
         this.staff = staff;
+        this.events = events;
     }
 
     /**
@@ -117,7 +123,7 @@ public class RequestAssignmentService {
 
     /**
      * Cambia el responsable y deja la marca interna. Solo la primera asignación agrega el hito público,
-     * en el mismo instante.
+     * en el mismo instante. Cada operación registra un solo request.assigned, desde la marca interna.
      */
     private MunicipalRequest record(
             MunicipalRequest request,
@@ -130,13 +136,14 @@ public class RequestAssignmentService {
         String previousName = request.getAssigneeName();
         request.assignTo(assigneeId, assigneeName);
         MunicipalRequest saved = requests.save(request);
-        Instant now = Instant.now();
+        Instant now = StoredInstant.now();
         String actorId = caller.userId().trim();
-        activity.save(RequestActivity.assigned(
+        RequestActivity assigned = activity.save(RequestActivity.assigned(
                 saved.getId(),
                 now,
                 actorId,
                 RequestService.snapshotName(caller.userName(), actorId),
+                caller.role(),
                 assigneeId,
                 assigneeName,
                 previousId,
@@ -146,6 +153,8 @@ public class RequestAssignmentService {
         if (previousId == null) {
             activity.save(RequestActivity.assignmentMilestone(saved.getId(), now));
         }
+        // Sin comandos de RabbitMQ: el traceId identifica solo esta asignación.
+        events.record(saved, assigned, UUID.randomUUID());
         return saved;
     }
 

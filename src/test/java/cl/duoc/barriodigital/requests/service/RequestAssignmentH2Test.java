@@ -1,5 +1,6 @@
 package cl.duoc.barriodigital.requests.service;
 
+import cl.duoc.barriodigital.requests.messaging.DomainEventRecorder;
 import java.time.Instant;
 import org.springframework.dao.DataIntegrityViolationException;
 import cl.duoc.barriodigital.requests.domain.RequestActivity;
@@ -46,7 +47,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
 @Import({RequestService.class, FolioCounterService.class, RequestAssignmentService.class, StaffMemberService.class,
-        ClockConfig.class})
+        ClockConfig.class, DomainEventRecorder.class})
 @TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class RequestAssignmentH2Test {
 
@@ -96,7 +97,7 @@ class RequestAssignmentH2Test {
         assignment.take(request.getId(), ANA);
 
         assertEquals(2, activity.findByRequestIdOrderByOccurredAtAsc(request.getId()).size());
-        RequestActivity withoutActor = RequestActivity.statusChanged(request.getId(), Instant.now(), null, null,
+        RequestActivity withoutActor = RequestActivity.statusChanged(request.getId(), Instant.now(), null, null, null,
                 RequestStatus.INGRESADO, RequestStatus.ADMITIDO, null, null);
         assertThrows(DataIntegrityViolationException.class, () -> activity.saveAndFlush(withoutActor));
     }

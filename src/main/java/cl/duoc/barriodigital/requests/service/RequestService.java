@@ -8,6 +8,7 @@ import cl.duoc.barriodigital.requests.domain.RequestActivity;
 import cl.duoc.barriodigital.requests.domain.RequestAttachment;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.domain.RequestTransitions;
+import cl.duoc.barriodigital.requests.messaging.DomainEventRecorder;
 import cl.duoc.barriodigital.requests.messaging.EventPublisher;
 import cl.duoc.barriodigital.requests.messaging.RequestEventPayload;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
@@ -50,7 +51,8 @@ import static cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifi
 
 /**
  * Crea trámites, los consulta y cambia su estado.
- * Publica el evento después del commit. Si RabbitMQ está caído se pierde el aviso, no el trámite, y no hay outbox.
+ * Cada cambio deja su evento de Kafka en el outbox, en la misma transacción (EP3-02). Los comandos de RabbitMQ se
+ * publican después del commit, con el mismo traceId: si RabbitMQ está caído se pierde el aviso, no el trámite.
  */
 @Service
 public class RequestService {
@@ -75,25 +77,35 @@ public class RequestService {
     /** Tope de intervention_reason, igual que rejectionReason. */
     static final int INTERVENTION_REASON_MAX = 500;
 
+    /** Rango de slaBusinessDays en catalog (EP3-06, sección 1.1). */
+    static final int SLA_DAYS_MIN = 1;
+    static final int SLA_DAYS_MAX = 120;
+
     private final MunicipalRequestRepository repository;
     private final RequestActivityRepository activity;
     private final RequestAttachmentRepository attachments;
     private final EventPublisher publisher;
     private final FolioCounterService folios;
+    private final DomainEventRecorder events;
 
-    /** Recibe los repositorios del trámite y su imagen, el historial, el publicador de eventos y el contador de folios. */
+    /**
+     * Recibe los repositorios del trámite y su imagen, el historial, el publicador de RabbitMQ, el contador de folios
+     * y el registro del outbox.
+     */
     public RequestService(
             MunicipalRequestRepository repository,
             RequestActivityRepository activity,
             RequestAttachmentRepository attachments,
             EventPublisher publisher,
-            FolioCounterService folios
+            FolioCounterService folios,
+            DomainEventRecorder events
     ) {
         this.repository = repository;
         this.activity = activity;
         this.attachments = attachments;
         this.publisher = publisher;
         this.folios = folios;
+        this.events = events;
     }
 
     /**
@@ -138,6 +150,7 @@ public class RequestService {
                 createdAt
         );
         LocationRules.apply(request, body);
+        request.snapshotSlaBusinessDays(snapshotSlaDays(caller.procedureSlaDays()));
         request.setHasAttachment(image != null);
         // El número se toma al final, ya validado el alta, para que el bloqueo del contador dure lo menos posible.
         request.assignFolio(folios.next(Folio.yearOf(createdAt)));
@@ -145,13 +158,16 @@ public class RequestService {
         if (image != null) {
             attachments.save(new RequestAttachment(saved, image));
         }
-        activity.save(RequestActivity.created(
+        UUID traceId = UUID.randomUUID();
+        RequestActivity created = activity.save(RequestActivity.created(
                 saved.getId(),
                 saved.getCreatedAt(),
                 caller.userId().trim(),
-                snapshotName(caller.userName(), caller.userId())
+                snapshotName(caller.userName(), caller.userId()),
+                caller.role()
         ));
-        publishAfterCommit(saved, List.of("certificate.receipt"));
+        events.record(saved, created, traceId);
+        publishAfterCommit(saved, List.of("certificate.receipt"), traceId);
         return saved;
     }
 
@@ -366,17 +382,20 @@ public class RequestService {
         RequestStatus previous = found.getStatus();
         found.applyStatus(target, rejectionReason);
         MunicipalRequest saved = repository.save(found);
-        activity.save(RequestActivity.statusChanged(
+        UUID traceId = UUID.randomUUID();
+        RequestActivity changed = activity.save(RequestActivity.statusChanged(
                 saved.getId(),
                 saved.getUpdatedAt(),
                 caller.userId().trim(),
                 snapshotName(caller.userName(), caller.userId()),
+                caller.role(),
                 previous,
                 saved.getStatus(),
                 target == RequestStatus.RECHAZADO ? rejectionReason : null,
                 intervention
         ));
-        publishStatusEventsAfterCommit(previous, saved);
+        events.record(saved, changed, traceId);
+        publishStatusEventsAfterCommit(previous, saved, traceId);
         return saved;
     }
 
@@ -385,7 +404,7 @@ public class RequestService {
      * INGRESADO a ADMITIDO publica email.admitted, EN_GESTION a EN_TERRENO publica crew.ticket y email.visit, y EN_TERRENO a RESUELTO publica email.resolved y certificate.resolved.
      * Pasar a RECHAZADO o a EN_GESTION no publica.
      */
-    private void publishStatusEventsAfterCommit(RequestStatus previous, MunicipalRequest saved) {
+    private void publishStatusEventsAfterCommit(RequestStatus previous, MunicipalRequest saved, UUID traceId) {
         List<String> types;
         if (previous == RequestStatus.INGRESADO && saved.getStatus() == RequestStatus.ADMITIDO) {
             types = List.of("email.admitted");
@@ -397,21 +416,20 @@ public class RequestService {
             return;
         }
 
-        publishAfterCommit(saved, types);
+        publishAfterCommit(saved, types, traceId);
     }
 
     /**
-     * Publica después del commit, cuando el trámite ya quedó guardado.
-     * Si un evento falla, se registra y se intenta el siguiente. Si RabbitMQ está caído se pierde el aviso, no el trámite, y no hay outbox.
+     * Publica en RabbitMQ después del commit, cuando el trámite ya quedó guardado, con el traceId del evento de Kafka.
+     * Si un comando falla, se registra y se intenta el siguiente. RabbitMQ no usa el outbox: un aviso puede perderse.
      */
-    private void publishAfterCommit(MunicipalRequest saved, List<String> types) {
+    private void publishAfterCommit(MunicipalRequest saved, List<String> types, UUID traceId) {
         if (!TransactionSynchronizationManager.isActualTransactionActive()
                 || !TransactionSynchronizationManager.isSynchronizationActive()) {
             throw new IllegalStateException("Los eventos de estado requieren una transaccion activa");
         }
         RequestEventPayload payload = new RequestEventPayload(saved.getId(), saved.getFolio(), saved.getProcedureType(),
                 saved.getProcedureLabel(), saved.getAddress(), saved.getSolicitanteEmail());
-        UUID traceId = UUID.randomUUID();
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             /** Cuando el commit terminó, publica cada evento. Si uno falla, lo registra y sigue con el siguiente. */
             @Override
@@ -498,6 +516,29 @@ public class RequestService {
      */
     static String snapshotProcedureLabel(String headerLabel) {
         return truncate(decodeHeader(headerLabel), PROCEDURE_LABEL_MAX);
+    }
+
+    /**
+     * Plazo del header X-Procedure-Sla-Days: entero de 1 a 120, o null si no viene (tipo sin plazo).
+     * Un valor inválido sería un error del BFF: queda null con WARN y no bloquea el alta, como X-Procedure-Label.
+     */
+    static Integer snapshotSlaDays(String header) {
+        String raw = blankToNull(header);
+        if (raw == null) {
+            return null;
+        }
+        try {
+            int days = Integer.parseInt(raw);
+            if (days >= SLA_DAYS_MIN && days <= SLA_DAYS_MAX) {
+                return days;
+            }
+        } catch (NumberFormatException ex) {
+            // Cae al WARN.
+        }
+        // Sin caracteres de control, para que el valor no pueda escribir líneas falsas en el log.
+        log.warn("X-Procedure-Sla-Days invalido, el tramite queda sin plazo: valor={}",
+                truncate(raw, 20).replaceAll("\\p{Cntrl}", "?"));
+        return null;
     }
 
     /**

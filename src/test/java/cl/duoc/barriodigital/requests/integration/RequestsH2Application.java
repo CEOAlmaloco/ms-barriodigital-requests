@@ -4,6 +4,7 @@ import cl.duoc.barriodigital.requests.config.ClockConfig;
 import cl.duoc.barriodigital.requests.config.RabbitConfig;
 import cl.duoc.barriodigital.requests.config.WebConfig;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
+import cl.duoc.barriodigital.requests.messaging.DomainEventRecorder;
 import cl.duoc.barriodigital.requests.messaging.EventPublisher;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.service.FolioCounterService;
@@ -42,7 +43,8 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
         RequestActivityService.class,
         ImageAttachmentSanitizer.class,
         RabbitConfig.class,
-        EventPublisher.class
+        EventPublisher.class,
+        DomainEventRecorder.class
 })
 public class RequestsH2Application {
     public static void main(String[] args) {
