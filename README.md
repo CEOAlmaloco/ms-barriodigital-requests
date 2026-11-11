@@ -90,9 +90,8 @@ Catálogo (**deprecado**): `GET /api/requests/meta/procedure-types` sigue respon
 Transiciones válidas: `GET /api/requests/meta/transitions`  
 (mapa estado → siguientes; `RESUELTO` y `RECHAZADO` vienen con lista vacía)
 
-Filtros de listado: `status`, `from`, `to` como **fecha** `yyyy-MM-dd` (sirve para mat-datepicker). Son días civiles en `America/Santiago` y los dos se incluyen completos: `to=2026-11-06` incluye un trámite creado ese día a las 22:00 en Chile, aunque en UTC ya sea el 7.  
-Filtro `assignee=me|none`, solo para staff: `me` son los trámites de quien llama (vacío para el Admin y el Auditor) y
-`none` los que no tienen responsable. Otro valor, 400; el Vecino que lo usa, 403.
+El listado `GET /api/requests` responde **por página**, con filtros, orden y búsqueda. Ver
+[Listado paginado](#listado-paginado-ep3-30).
 Vecino: el servidor fuerza `solicitanteId = X-User-Id`. Funcionario/Admin/Auditor: ven todos.
 Las respuestas salen como `RequestView`, armado según el rol: la entidad nunca se serializa. El Auditor recibe
 `solicitanteEmail` en `null`.
@@ -108,8 +107,8 @@ curl -X POST http://localhost:8081/api/requests `
   -H "X-Procedure-Label: Bache%20en%20calle" `
   -d "{\"description\":\"Hueco frente al 123\",\"procedureType\":\"bache\",\"address\":\"Plaza Los Heroes\"}"
 
-# Listar (fecha simple)
-curl "http://localhost:8081/api/requests?status=INGRESADO&from=2026-09-01&to=2026-09-13" `
+# Listar (abiertos de septiembre que mencionan "bache", segunda página de 10)
+curl "http://localhost:8081/api/requests?open=true&from=2026-09-01&to=2026-09-30&q=bache&page=1&size=10" `
   -H "X-User-Id: oid-de-prueba" `
   -H "X-User-Roles: Vecino"
 
@@ -271,6 +270,58 @@ Una base nueva no lo necesita: Hibernate crea la tabla con las cuatro marcas y c
 **Transición hasta EP3-45 y EP3-47:** el BFF todavía no expone `take`, `assignee` ni `assignees`, y sigue aceptando
 solo al Funcionario en el cambio de estado. Hasta esas issues, nadie puede tomar ni operar un trámite desde la
 pantalla, y un 403 del no responsable en la admisión no libera el cupo reservado. No se despliega antes de EP3-45.
+
+## Listado paginado (EP3-30)
+
+`GET /api/requests` devuelve una página. Report y audit usan la misma forma (EP3-07, sección 2.1), así el frontend
+tiene un solo componente de tabla. Los filtros se combinan por un Y lógico, y un filtro vacío no se aplica.
+
+| Parámetro | Regla | Si es inválido, 400 |
+|---|---|---|
+| `page` | Entero desde 0. Por defecto 0. Una página más allá del total viene vacía | `page debe ser 0 o mayor` |
+| `size` | Entero de 1 a 50. Por defecto 20 | `size debe estar entre 1 y 50` |
+| `sort` | `campo` o `campo,asc\|desc`, con `createdAt`, `status` o `folio`. Sin dirección, ascendente. Por defecto `createdAt,desc` | `sort no es valido` |
+| `q` | Texto que se busca en el folio, la descripción y la dirección, sin distinguir mayúsculas. Hasta 100 caracteres | `q no puede superar 100 caracteres` |
+| `status` | Un estado, por ejemplo `EN_GESTION` | Error de conversión de Spring |
+| `open` | `true` son los abiertos y `false` los cerrados (`RESUELTO` o `RECHAZADO`). Con `status`, Y lógico: `status=RESUELTO&open=true` da una página vacía | `open debe ser true o false` |
+| `procedureType` | Código del tipo, sin distinguir mayúsculas. Un código que no existe da una página vacía, porque los tipos viven en catalog | |
+| `sector` | Clave de sector del alta, por ejemplo `villa-ralco` | `sector no es valido` |
+| `from`, `to` | Días `yyyy-MM-dd` en `America/Santiago`, los dos completos: `to=2026-11-06` incluye un trámite de ese día a las 22:00 en Chile, aunque en UTC ya sea el 7 | `from no puede ser posterior a to` |
+| `assignee` | `me` o `none`, solo staff (EP3-05, sección 8). El Vecino que lo usa recibe 403 `El filtro assignee es solo para staff` | `assignee debe ser me o none` |
+
+```json
+{
+  "content": [ { "id": "…", "folio": "BD-2026-000123", "status": "EN_GESTION", "…": "…" } ],
+  "page": 0,
+  "size": 20,
+  "totalElements": 57,
+  "totalPages": 3
+}
+```
+
+- `content` lleva `RequestView`, proyectado por rol como en el detalle. El Vecino solo ve sus trámites, también al
+  buscar y al filtrar.
+- El orden siempre desempata por `id`, así que un trámite no se repite ni se pierde entre páginas.
+  `sort=status` sigue el ciclo de vida (`INGRESADO` → … → `RESUELTO` → `RECHAZADO`), no el orden alfabético.
+  Dentro de un mismo estado van primero los más recientes.
+- `%`, `_` y `\` en `q` se buscan como texto, no como comodines.
+- Para un conteo basta `size=1`: `totalElements` trae el total (bloques de `/inicio`, EP3-04, sección 7).
+- Índices en `municipal_requests` para el Vecino, el orden por defecto y la bandeja:
+  `(solicitante_id, created_at)`, `(created_at)` y `(assignee_id)`. Hibernate los crea por nombre al arrancar.
+
+**Límites conocidos**
+
+1. **`q` distingue tildes:** "Cauñicú" no encuentra "Caunicu". Ignorarlas igual en Oracle y en H2 requiere Oracle
+   Text o una columna normalizada; queda como mejora futura.
+2. **`q` no usa índices:** busca con `LIKE '%texto%'`, que recorre la tabla. A la escala de una comuna responde
+   bien. Si crece, el paso es Oracle Text.
+3. **`status` acepta un solo valor**, como antes de EP3-30. Aceptar varios separados por coma, como en report, es
+   una mejora futura.
+
+**Transición hasta EP3-45 y EP3-48:** antes el listado era un arreglo y ahora es una página. Este cambio se mergea
+junto con el primer commit de EP3-45, en el que el BFF deja pasar la página. Hasta EP3-48, el frontend usa un
+adaptador temporal que pide `size=50` y lee `content`. Mientras tanto, con más de 50 trámites el listado se ve
+incompleto.
 
 ## Concurrencia de estado (EP1.5-18)
 

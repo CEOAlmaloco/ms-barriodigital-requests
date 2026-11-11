@@ -9,6 +9,7 @@ import cl.duoc.barriodigital.requests.service.RequestActivityService;
 import cl.duoc.barriodigital.requests.service.RequestAssignmentService;
 import cl.duoc.barriodigital.requests.service.RequestAttachmentContent;
 import cl.duoc.barriodigital.requests.service.RequestCreationOrchestrationService;
+import cl.duoc.barriodigital.requests.service.RequestListQuery;
 import cl.duoc.barriodigital.requests.service.RequestService;
 import cl.duoc.barriodigital.requests.service.StaffMemberService;
 import cl.duoc.barriodigital.requests.web.dto.ActividadView;
@@ -16,6 +17,7 @@ import cl.duoc.barriodigital.requests.web.dto.AssignRequestDto;
 import cl.duoc.barriodigital.requests.web.dto.AssigneeView;
 import cl.duoc.barriodigital.requests.web.dto.ChangeStatusDto;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
+import cl.duoc.barriodigital.requests.web.dto.PageView;
 import cl.duoc.barriodigital.requests.web.dto.RegisterGestionDto;
 import cl.duoc.barriodigital.requests.web.dto.RequestView;
 import jakarta.validation.Valid;
@@ -217,22 +219,29 @@ public class RequestController {
     }
 
     /**
-     * Lista trámites. Las fechas from y to llegan como día, por ejemplo 2026-10-25.
-     * assignee=me|none filtra por responsable, solo para staff.
+     * Lista trámites por página (EP3-30). Las fechas from y to llegan como día, por ejemplo 2026-10-25.
+     * assignee=me|none filtra por responsable, solo para staff. Las reglas de cada parámetro están en el README.
      */
     @GetMapping
-    public List<RequestView> list(
+    public PageView<RequestView> list(
             @RequestParam(required = false) RequestStatus status,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(required = false) String assignee,
+            @RequestParam(required = false) String open,
+            @RequestParam(required = false) String q,
+            @RequestParam(required = false) String procedureType,
+            @RequestParam(required = false) String sector,
+            @RequestParam(required = false) Integer page,
+            @RequestParam(required = false) Integer size,
+            @RequestParam(required = false) String sort,
             @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
             @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles
     ) {
         CallerContext caller = new CallerContext(userId, roles);
-        return requestService.list(status, from, to, assignee, caller).stream()
-                .map(request -> RequestView.of(request, caller))
-                .toList();
+        RequestListQuery params = new RequestListQuery(
+                status, from, to, assignee, open, q, procedureType, sector, page, size, sort);
+        return PageView.of(requestService.list(params, caller), request -> RequestView.of(request, caller));
     }
     
     /**

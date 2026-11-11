@@ -5,6 +5,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import jakarta.persistence.Index;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
@@ -20,9 +21,15 @@ import java.util.UUID;
  */
 @Entity
 // El nombre del constraint calza con db/folio-existing-requests.sql. Con ddl-auto update, Hibernate lo recrea por nombre.
+// Índices del listado (EP3-30). Hibernate los crea por nombre si faltan; idx_municipal_requests_created ya está en db/schema.sql.
 @Table(
         name = "municipal_requests",
-        uniqueConstraints = @UniqueConstraint(name = "uk_municipal_requests_folio", columnNames = "folio")
+        uniqueConstraints = @UniqueConstraint(name = "uk_municipal_requests_folio", columnNames = "folio"),
+        indexes = {
+                @Index(name = "idx_municipal_requests_solicitante_created", columnList = "solicitante_id, created_at"),
+                @Index(name = "idx_municipal_requests_created", columnList = "created_at"),
+                @Index(name = "idx_municipal_requests_assignee", columnList = "assignee_id")
+        }
 )
 public class MunicipalRequest {
 

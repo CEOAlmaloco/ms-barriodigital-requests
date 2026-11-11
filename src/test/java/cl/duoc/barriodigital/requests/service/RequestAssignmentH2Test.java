@@ -33,6 +33,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+import static cl.duoc.barriodigital.requests.TestListQueries.query;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -78,9 +79,9 @@ class RequestAssignmentH2Test {
         assignment.take(mine.getId(), ANA);
         assignment.take(other.getId(), BRUNO);
 
-        List<String> me = ids(requests.list(null, null, null, "me", ANA));
-        List<String> none = ids(requests.list(null, null, null, "none", ANA));
-        List<String> adminMe = ids(requests.list(null, null, null, "me", ADMIN));
+        List<String> me = ids(requests.list(query().assignee(" me ").build(), ANA).getContent());
+        List<String> none = ids(requests.list(query().assignee("none").build(), ANA).getContent());
+        List<String> adminMe = ids(requests.list(query().assignee("me").build(), ADMIN).getContent());
 
         assertEquals(List.of(mine.getId()), me);
         assertTrue(none.contains(unassigned.getId()));

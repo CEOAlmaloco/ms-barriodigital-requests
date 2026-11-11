@@ -19,6 +19,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 
+import static cl.duoc.barriodigital.requests.TestListQueries.query;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /** Filtro por días civiles de Chile contra la consulta real en H2; no valida el entorno Oracle desplegado. */
@@ -52,21 +53,21 @@ class RequestListCivilDayTest {
 
     @Test
     void unDiaIncluyeLaNocheYElUltimoSegundoEnHoraDeChile() {
-        List<MunicipalRequest> found = service.list(null, DAY, DAY, null, FUNCIONARIO);
+        List<MunicipalRequest> found = service.list(query().from(DAY).to(DAY).build(), FUNCIONARIO).getContent();
 
         assertEquals(List.of("ultimoSegundo", "noche", "inicio"), titles(found));
     }
 
     @Test
     void soloHastaIncluyeElDiaCompleto() {
-        List<MunicipalRequest> found = service.list(null, null, DAY, null, FUNCIONARIO);
+        List<MunicipalRequest> found = service.list(query().to(DAY).build(), FUNCIONARIO).getContent();
 
         assertEquals(List.of("ultimoSegundo", "noche", "inicio", "antes"), titles(found));
     }
 
     @Test
     void soloDesdeEmpiezaALaMedianocheDeChile() {
-        List<MunicipalRequest> found = service.list(null, DAY.plusDays(1), null, null, FUNCIONARIO);
+        List<MunicipalRequest> found = service.list(query().from(DAY.plusDays(1)).build(), FUNCIONARIO).getContent();
 
         assertEquals(List.of("despues"), titles(found));
     }

@@ -67,6 +67,31 @@
       }
     },
     {
+      "name": "Listar (Funcionario, página, búsqueda y orden; EP3-30)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-User-Id", "value": "oid-func-prueba" },
+          { "key": "X-User-Roles", "value": "Funcionario" }
+        ],
+        "url": {
+          "raw": "http://localhost:8081/api/requests?open=true&q=bache&sector=ralco&sort=status,asc&page=0&size=20",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "requests"],
+          "query": [
+            { "key": "open", "value": "true" },
+            { "key": "q", "value": "bache" },
+            { "key": "sector", "value": "ralco" },
+            { "key": "sort", "value": "status,asc" },
+            { "key": "page", "value": "0" },
+            { "key": "size", "value": "20" }
+          ]
+        }
+      }
+    },
+    {
       "name": "Obtener por id",
       "request": {
         "method": "GET",
