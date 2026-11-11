@@ -23,8 +23,31 @@ spring:
     publisher-returns: true
     template:
       mandatory: true
+  # Copia de src/main con un broker inalcanzable.
+  kafka:
+    bootstrap-servers: 203.0.113.1:9092
+    admin:
+      auto-create: false
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
+        linger.ms: 0
 
 barriodigital:
+  kafka:
+    topic:
+      requests-events: requests.events
+  outbox:
+    scheduling:
+      enabled: false
+    relay-delay-ms: 1000
   rabbit:
     exchange:
       topic: cmd.topic

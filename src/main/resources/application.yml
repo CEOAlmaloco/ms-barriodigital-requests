@@ -46,9 +46,38 @@ spring:
     publisher-returns: true
     template:
       mandatory: true
+  # Los límites deben caber en la espera de 10 s del relay (KafkaConfig los valida).
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    admin:
+      auto-create: false
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
+        linger.ms: 0
+  # Relay y limpieza en hilos distintos.
+  task:
+    scheduling:
+      pool:
+        size: 2
+      thread-name-prefix: requests-scheduled-
 
-# Contrato EP2-02. Mismas claves que notify.
 barriodigital:
+  kafka:
+    topic:
+      requests-events: requests.events
+  outbox:
+    scheduling:
+      enabled: true
+    relay-delay-ms: 1000
+  # Contrato EP2-02. Mismas claves que notify.
   rabbit:
     exchange:
       topic: cmd.topic
@@ -79,7 +108,8 @@ management:
         include: health,info
   endpoint:
     health:
-      show-details: when_authorized
+      # Sin Spring Security, when_authorized ocultaba los detalles del outbox. El 8081 no es público.
+      show-details: always
   health:
     db:
       enabled: true

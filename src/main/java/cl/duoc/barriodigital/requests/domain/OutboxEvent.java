@@ -14,7 +14,7 @@ import java.time.Instant;
 
 /**
  * Evento de requests.events pendiente de publicar (contrato EP3-02, sección 2.1).
- * Se escribe en la misma transacción que el cambio del trámite y su RequestActivity. El relay (EP3-32) lo publica.
+ * Se escribe en la misma transacción que el cambio del trámite y su RequestActivity. OutboxRelay lo publica.
  * La tabla la crea db/outbox-events.sql: event_sequence es identity con ORDER, que Hibernate no sabe crear.
  */
 @Entity
