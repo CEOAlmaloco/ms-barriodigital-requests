@@ -39,7 +39,7 @@ public class RequestActivityService {
     private static final Set<RequestStatus> MUNICIPAL = EnumSet.of(
             RequestStatus.ADMITIDO, RequestStatus.EN_GESTION, RequestStatus.EN_TERRENO);
     private static final Set<RequestStatus> TERMINAL = EnumSet.of(
-            RequestStatus.RESUELTO, RequestStatus.RECHAZADO);
+            RequestStatus.RESUELTO, RequestStatus.RECHAZADO, RequestStatus.CANCELADO);
 
     /** Nombre con que el Vecino ve a quien actuó por la municipalidad (EP3-04, sección 6.2). */
     static final String MUNICIPALIDAD = "Municipalidad";

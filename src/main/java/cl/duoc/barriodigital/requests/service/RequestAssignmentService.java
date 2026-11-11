@@ -32,7 +32,8 @@ public class RequestAssignmentService {
     /** Tope de reason, como rejectionReason. */
     static final int REASON_MAX = 500;
 
-    private static final Set<RequestStatus> CLOSED = EnumSet.of(RequestStatus.RESUELTO, RequestStatus.RECHAZADO);
+    private static final Set<RequestStatus> CLOSED = EnumSet.of(
+            RequestStatus.RESUELTO, RequestStatus.RECHAZADO, RequestStatus.CANCELADO);
 
     private final MunicipalRequestRepository requests;
     private final RequestActivityRepository activity;

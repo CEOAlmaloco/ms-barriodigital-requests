@@ -352,6 +352,12 @@ public class RequestService {
         }
 
         RequestStatus target = parseStatus(rawStatus);
+        if (target == RequestStatus.CANCELADO) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "La cancelacion del titular usa POST /api/requests/{id}/cancel"
+            );
+        }
         if (target == RequestStatus.RECHAZADO) {
             String reason = rejectionReason == null ? "" : rejectionReason.trim();
             if (reason.isEmpty()) {
@@ -396,6 +402,49 @@ public class RequestService {
         ));
         events.record(saved, changed, traceId);
         publishStatusEventsAfterCommit(previous, saved, traceId);
+        return saved;
+    }
+
+    /**
+     * Cancela el trámite. Solo el Vecino titular y solo desde INGRESADO (EP3-76).
+     * Deja estado CANCELADO (no RECHAZADO), marca en el historial y escribe request.cancelled en el outbox.
+     * Orden: 400 sin identidad, 403 por rol, 404, 403 si no es el titular, 409 si no está en INGRESADO.
+     */
+    @Transactional
+    public MunicipalRequest cancel(String id, CallerContext caller) {
+        requireUserId(caller);
+        if (!caller.isVecino()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo el Vecino titular puede cancelar el tramite");
+        }
+
+        MunicipalRequest found = repository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado"));
+        if (!caller.userId().trim().equals(found.getSolicitanteId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo el titular del tramite puede cancelarlo");
+        }
+        if (found.getStatus() != RequestStatus.INGRESADO) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Solo se puede cancelar un tramite en INGRESADO"
+            );
+        }
+
+        RequestStatus previous = found.getStatus();
+        found.applyStatus(RequestStatus.CANCELADO, null);
+        MunicipalRequest saved = repository.save(found);
+        UUID traceId = UUID.randomUUID();
+        RequestActivity cancelled = activity.save(RequestActivity.statusChanged(
+                saved.getId(),
+                saved.getUpdatedAt(),
+                caller.userId().trim(),
+                snapshotName(caller.userName(), caller.userId()),
+                caller.role(),
+                previous,
+                RequestStatus.CANCELADO,
+                null,
+                null
+        ));
+        events.record(saved, cancelled, traceId);
         return saved;
     }
 

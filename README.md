@@ -4,7 +4,7 @@ Microservicio de **trámites** del municipio (BarrioDigital).
 
 Puerto: **8081**
 
-Estados del caso: `INGRESADO → ADMITIDO → EN_GESTION → EN_TERRENO → RESUELTO | RECHAZADO`
+Estados del caso: `INGRESADO → ADMITIDO → EN_GESTION → EN_TERRENO → RESUELTO | RECHAZADO`, y `INGRESADO → CANCELADO` solo por el titular (`POST /api/requests/{id}/cancel`, EP3-76).
 
 ## Cómo iniciar (Oracle — EP1-21 / EP1-14)
 
@@ -90,7 +90,7 @@ Requests solo valida el formato: tras recortar espacios y pasar a minúsculas, t
 El título usa `procedureLabel` si llegó en el header. Si no, usa la etiqueta conocida de `bache`, `alumbrado`, `basura`, `agua`, `ruido` y `otro`, y para un código nuevo el código tal cual.  
 Catálogo (**deprecado**): `GET /api/requests/meta/procedure-types` sigue respondiendo la lista fija, pero la fuente de verdad es `GET /api/catalog/procedures`.  
 Transiciones válidas: `GET /api/requests/meta/transitions`  
-(mapa estado → siguientes; `RESUELTO` y `RECHAZADO` vienen con lista vacía)
+(mapa estado → siguientes del PUT `/status`; `RESUELTO`, `RECHAZADO` y `CANCELADO` vienen con lista vacía. La cancelación del titular es `POST /api/requests/{id}/cancel`, EP3-76)
 
 El listado `GET /api/requests` responde **por página**, con filtros, orden y búsqueda. Ver
 [Listado paginado](#listado-paginado-ep3-30).
@@ -132,6 +132,12 @@ curl -X PUT http://localhost:8081/api/requests/<id>/status `
   -H "X-User-Id: oid-funcionario" `
   -H "X-User-Roles: Funcionario" `
   -d "{\"status\":\"ADMITIDO\"}"
+
+# Cancelar (solo el Vecino titular, solo en INGRESADO; EP3-76)
+curl -X POST http://localhost:8081/api/requests/<id>/cancel `
+  -H "X-User-Id: oid-de-prueba" `
+  -H "X-User-Roles: Vecino" `
+  -H "X-User-Name: Alex%20Ampuero"
 ```
 
 Si la tabla ya tenía filas viejas sin `address`/`solicitante_id`, vaciala una vez en SQL:  

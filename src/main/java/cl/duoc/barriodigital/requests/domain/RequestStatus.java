@@ -2,7 +2,8 @@ package cl.duoc.barriodigital.requests.domain;
 
 /**
  * Estados de un trámite.
- * Empieza en INGRESADO, puede seguir por ADMITIDO, EN_GESTION y EN_TERRENO, y termina en RESUELTO o RECHAZADO.
+ * Empieza en INGRESADO, puede seguir por ADMITIDO, EN_GESTION y EN_TERRENO, y termina en RESUELTO, RECHAZADO o CANCELADO.
+ * CANCELADO solo lo alcanza el titular desde INGRESADO (EP3-76); no es una transición del PUT de estado.
  */
 public enum RequestStatus {
     INGRESADO("Ingresado"),
@@ -10,7 +11,8 @@ public enum RequestStatus {
     EN_GESTION("En gestión"),
     EN_TERRENO("En terreno"),
     RESUELTO("Resuelto"),
-    RECHAZADO("Rechazado");
+    RECHAZADO("Rechazado"),
+    CANCELADO("Cancelado");
 
     private final String label;
 

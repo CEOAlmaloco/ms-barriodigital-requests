@@ -147,6 +147,18 @@ public class RequestController {
         );
     }
 
+    /** Cancela el trámite. Solo el Vecino titular y solo en INGRESADO (EP3-76). Sin body. */
+    @PostMapping("/{id}/cancel")
+    public RequestView cancel(
+            @PathVariable String id,
+            @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
+            @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles,
+            @RequestHeader(value = CallerContext.HEADER_USER_NAME, required = false) String userName
+    ) {
+        CallerContext caller = new CallerContext(userId, roles, userName);
+        return RequestView.of(requestService.cancel(id, caller), caller);
+    }
+
     /** Historial, gestiones visibles según el rol y los tiempos que sí se pueden calcular. */
     @GetMapping("/{id}/actividad")
     public ActividadView actividad(
