@@ -55,6 +55,17 @@ public record DomainEvent(
     ) {
     }
 
+    /** request.cancelled. Solo INGRESADO → CANCELADO por el titular (EP3-76). Sin motivo ni intervención. */
+    public record Cancelled(
+            String requestId,
+            String folio,
+            String procedureType,
+            String sector,
+            RequestStatus fromStatus,
+            RequestStatus toStatus
+    ) {
+    }
+
     /** request.contact-logged. Sin la nota libre, que puede tener datos del contacto (EP3-01, sección 8). */
     public record ContactLogged(
             String requestId,

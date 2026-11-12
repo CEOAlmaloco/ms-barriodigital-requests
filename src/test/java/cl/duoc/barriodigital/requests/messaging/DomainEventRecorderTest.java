@@ -136,6 +136,28 @@ class DomainEventRecorderTest {
     }
 
     @Test
+    void requestCancelledDelTitular() throws Exception {
+        RequestActivity row = RequestActivity.statusChanged(REQUEST_ID, AT, "oid-vecino", "Vecino Test", "Vecino",
+                RequestStatus.INGRESADO, RequestStatus.CANCELADO, null, null);
+
+        OutboxEvent saved = recorder.record(request(), row, TRACE);
+
+        assertEquals(DomainEventRecorder.REQUEST_CANCELLED, saved.getEventType());
+        JsonNode json = envelope(saved, "request.cancelled");
+        assertEquals("Vecino", json.get("actor").get("role").asText());
+        JSONAssert.assertEquals("""
+                {
+                  "requestId": "7b6e1d44-2a18-4c90-9f01-88aa11bb22cc",
+                  "folio": "BD-2026-000123",
+                  "procedureType": "bache",
+                  "sector": "ralco",
+                  "fromStatus": "INGRESADO",
+                  "toStatus": "CANCELADO"
+                }""", json.get("payload").toString(), JSONCompareMode.STRICT);
+        assertFalse(saved.getPayload().contains("reason"));
+    }
+
+    @Test
     void requestContactLoggedSinLaNotaLibre() throws Exception {
         RequestActivity row = RequestActivity.gestion(REQUEST_ID, AT, "oid-func", "Funcionario Test", "Funcionario",
                 ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, "Dejé recado con la vecina del 12",

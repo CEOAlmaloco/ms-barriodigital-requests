@@ -174,6 +174,24 @@ class OutboxH2Test {
     }
 
     @Test
+    void laCancelacionDelTitularDejaRequestCancelled() throws Exception {
+        MunicipalRequest created = create();
+
+        inTransaction(() -> requests.cancel(created.getId(), VECINO));
+
+        List<OutboxEvent> events = events(created.getId());
+        assertEquals(List.of(DomainEventRecorder.REQUEST_CREATED, DomainEventRecorder.REQUEST_CANCELLED), types(events));
+        assertEquals(RequestStatus.CANCELADO, repository.findById(created.getId()).orElseThrow().getStatus());
+        JsonNode cancelled = JSON.readTree(events.get(1).getPayload());
+        assertEquals("CANCELADO", cancelled.get("payload").get("toStatus").asText());
+        assertEquals("Vecino", cancelled.get("actor").get("role").asText());
+        assertEquals(1, rows(created.getId()).stream()
+                .filter(row -> row.getKind() == ActivityKind.ESTADO
+                        && row.getToStatus() == RequestStatus.CANCELADO)
+                .count());
+    }
+
+    @Test
     void laCalificacionDelTitularDejaRequestRated() throws Exception {
         MunicipalRequest created = create();
         inTransaction(() -> {

@@ -105,6 +105,34 @@ class RequestControllerStatusTest {
     }
 
     @Test
+    void postCancelDevuelve200ConCancelado() throws Exception {
+        MunicipalRequest cancelled = new MunicipalRequest("t", "d", "bache", "dir", "oid-vecino");
+        cancelled.setStatus(RequestStatus.CANCELADO);
+        when(requestService.cancel(eq("id-1"), any())).thenReturn(cancelled);
+
+        mockMvc.perform(post("/api/requests/id-1/cancel")
+                        .header("X-User-Id", "oid-vecino")
+                        .header("X-User-Roles", "Vecino")
+                        .header("X-User-Name", "Vecino%20Uno"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("CANCELADO"));
+
+        verify(requestService).cancel(eq("id-1"), any());
+    }
+
+    @Test
+    void postCancelPropaga409() throws Exception {
+        when(requestService.cancel(eq("id-1"), any()))
+                .thenThrow(new ResponseStatusException(
+                        HttpStatus.CONFLICT, "Solo se puede cancelar un tramite en INGRESADO"));
+
+        mockMvc.perform(post("/api/requests/id-1/cancel")
+                        .header("X-User-Id", "oid-vecino")
+                        .header("X-User-Roles", "Vecino"))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
     void postRatingDevuelve200() throws Exception {
         MunicipalRequest rated = new MunicipalRequest("t", "d", "bache", "dir", "oid-vecino");
         rated.setStatus(RequestStatus.RESUELTO);

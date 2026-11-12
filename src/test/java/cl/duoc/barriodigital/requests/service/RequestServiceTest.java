@@ -843,6 +843,69 @@ class RequestServiceTest {
         CallerContext funcionario = new CallerContext("func", "Funcionario");
         assertConflict(RequestStatus.RESUELTO, "RECHAZADO", funcionario);
         assertConflict(RequestStatus.RECHAZADO, "ADMITIDO", funcionario);
+        assertConflict(RequestStatus.CANCELADO, "ADMITIDO", funcionario);
+    }
+
+    @Test
+    void changeStatusNoAceptaCanceladoPorPut() {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                requestService.changeStatus("id-1", "CANCELADO", null, null, new CallerContext("func", "Funcionario")));
+        assertEquals(400, ex.getStatusCode().value());
+        assertEquals("La cancelacion del titular usa POST /api/requests/{id}/cancel", ex.getReason());
+        verify(repository, never()).findByIdForUpdate(any());
+    }
+
+    @Test
+    void cancelDelTitularEnIngresadoDejaCanceladoYRegistraElEvento() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(activity.save(any(RequestActivity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-vecino", "Vecino");
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(stored));
+
+        MunicipalRequest updated = requestService.cancel("id-1", new CallerContext("oid-vecino", "Vecino", "Vecino%20Uno"));
+
+        assertEquals(RequestStatus.CANCELADO, updated.getStatus());
+        assertNull(updated.getRejectionReason());
+        ArgumentCaptor<RequestActivity> mark = ArgumentCaptor.forClass(RequestActivity.class);
+        verify(activity).save(mark.capture());
+        assertEquals(RequestStatus.INGRESADO, mark.getValue().getFromStatus());
+        assertEquals(RequestStatus.CANCELADO, mark.getValue().getToStatus());
+        assertEquals("Vecino", mark.getValue().getActorRole());
+        verify(events).record(eq(updated), eq(mark.getValue()), any(UUID.class));
+    }
+
+    @Test
+    void cancelFueraDeIngresadoEs409() {
+        MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-vecino");
+        stored.setStatus(RequestStatus.ADMITIDO);
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(stored));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                requestService.cancel("id-1", new CallerContext("oid-vecino", "Vecino")));
+        assertEquals(409, ex.getStatusCode().value());
+        assertEquals("Solo se puede cancelar un tramite en INGRESADO", ex.getReason());
+        verify(events, never()).record(any(), any(), any());
+    }
+
+    @Test
+    void cancelDeOtroVecinoEs403() {
+        MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-titular");
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(stored));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                requestService.cancel("id-1", new CallerContext("oid-otro", "Vecino")));
+        assertEquals(403, ex.getStatusCode().value());
+        assertEquals("Solo el titular del tramite puede cancelarlo", ex.getReason());
+        verify(events, never()).record(any(), any(), any());
+    }
+
+    @Test
+    void cancelDeStaffEs403AntesDeBuscar() {
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
+                requestService.cancel("id-1", new CallerContext("func", "Funcionario")));
+        assertEquals(403, ex.getStatusCode().value());
+        assertEquals("Solo el Vecino titular puede cancelar el tramite", ex.getReason());
+        verify(repository, never()).findByIdForUpdate(any());
     }
 
     @Test

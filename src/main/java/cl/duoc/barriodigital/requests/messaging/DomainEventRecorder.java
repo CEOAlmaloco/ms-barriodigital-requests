@@ -32,6 +32,7 @@ public class DomainEventRecorder {
 
     public static final String REQUEST_CREATED = "request.created";
     public static final String REQUEST_STATUS_CHANGED = "request.status-changed";
+    public static final String REQUEST_CANCELLED = "request.cancelled";
     public static final String REQUEST_CONTACT_LOGGED = "request.contact-logged";
     public static final String REQUEST_ASSIGNED = "request.assigned";
     public static final String REQUEST_RATED = "request.rated";
@@ -72,10 +73,16 @@ public class DomainEventRecorder {
                         RequestStatus.INGRESADO, request.getSlaBusinessDays());
             }
             case ESTADO -> {
-                type = REQUEST_STATUS_CHANGED;
-                payload = new DomainEvent.StatusChanged(request.getId(), request.getFolio(),
-                        request.getProcedureType(), request.getSector(), row.getFromStatus(), row.getToStatus(),
-                        row.getReason(), row.getInterventionReason());
+                if (row.getToStatus() == RequestStatus.CANCELADO) {
+                    type = REQUEST_CANCELLED;
+                    payload = new DomainEvent.Cancelled(request.getId(), request.getFolio(),
+                            request.getProcedureType(), request.getSector(), row.getFromStatus(), row.getToStatus());
+                } else {
+                    type = REQUEST_STATUS_CHANGED;
+                    payload = new DomainEvent.StatusChanged(request.getId(), request.getFolio(),
+                            request.getProcedureType(), request.getSector(), row.getFromStatus(), row.getToStatus(),
+                            row.getReason(), row.getInterventionReason());
+                }
             }
             case GESTION -> {
                 type = REQUEST_CONTACT_LOGGED;

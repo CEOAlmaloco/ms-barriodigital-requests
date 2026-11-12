@@ -8,8 +8,9 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Cambios de estado permitidos de un trámite.
- * INGRESADO va a ADMITIDO o RECHAZADO, ADMITIDO a EN_GESTION o RECHAZADO, EN_GESTION a EN_TERRENO o RECHAZADO y EN_TERRENO a RESUELTO o RECHAZADO. RESUELTO y RECHAZADO no continúan.
+ * Cambios de estado permitidos de un trámite vía PUT /status (staff).
+ * INGRESADO va a ADMITIDO o RECHAZADO, ADMITIDO a EN_GESTION o RECHAZADO, EN_GESTION a EN_TERRENO o RECHAZADO y EN_TERRENO a RESUELTO o RECHAZADO.
+ * RESUELTO, RECHAZADO y CANCELADO no continúan. INGRESADO → CANCELADO es solo del titular (EP3-76), fuera de este mapa.
  */
 public final class RequestTransitions {
 
@@ -22,6 +23,7 @@ public final class RequestTransitions {
         ALLOWED.put(RequestStatus.EN_TERRENO, EnumSet.of(RequestStatus.RESUELTO, RequestStatus.RECHAZADO));
         ALLOWED.put(RequestStatus.RESUELTO, EnumSet.noneOf(RequestStatus.class));
         ALLOWED.put(RequestStatus.RECHAZADO, EnumSet.noneOf(RequestStatus.class));
+        ALLOWED.put(RequestStatus.CANCELADO, EnumSet.noneOf(RequestStatus.class));
     }
 
     /** No se instancia: solo expone las transiciones. */
@@ -36,7 +38,7 @@ public final class RequestTransitions {
         return ALLOWED.getOrDefault(from, Set.of()).contains(to);
     }
 
-    /** Indica si el trámite está cerrado: su estado ya no continúa (RESUELTO o RECHAZADO). */
+    /** Indica si el trámite está cerrado: su estado ya no continúa (RESUELTO, RECHAZADO o CANCELADO). */
     public static boolean isClosed(RequestStatus status) {
         return ALLOWED.getOrDefault(status, Set.of()).isEmpty();
     }
