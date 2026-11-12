@@ -39,8 +39,12 @@ class RequestViewJsonTest {
         JsonNode view = mapper.valueToTree(RequestView.of(request, new CallerContext("func-1", "Funcionario")));
 
         List<String> expected = new ArrayList<>(CURRENT_FIELDS);
-        expected.addAll(List.of("hasAssignee", "assigneeId", "assigneeName", "slaBusinessDays"));
+        expected.addAll(List.of(
+                "hasAssignee", "assigneeId", "assigneeName", "slaBusinessDays",
+                "satisfactionScore", "satisfactionComment"));
         assertEquals(expected, names(view));
+        assertTrue(view.get("satisfactionScore").isNull());
+        assertTrue(view.get("satisfactionComment").isNull());
         for (String field : CURRENT_FIELDS) {
             assertEquals(entity.get(field), view.get(field), field);
         }

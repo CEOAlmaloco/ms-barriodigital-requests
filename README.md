@@ -6,6 +6,10 @@ Puerto: **8081**
 
 Estados del caso: `INGRESADO → ADMITIDO → EN_GESTION → EN_TERRENO → RESUELTO | RECHAZADO`, y `INGRESADO → CANCELADO` solo por el titular (`POST /api/requests/{id}/cancel`, EP3-76).
 
+Encuesta (EP3-74): el titular califica un trámite `RESUELTO` una sola vez con `POST /api/requests/{id}/rating` (`score` 1..5, `comment` opcional) y queda `request.rated` en el outbox.
+Preferencias de aviso (EP3-65): `GET|PUT /api/requests/me/notification-preferences` con `{ "emailEnabled": true|false }`.
+Si el titular desactiva el correo, requests no publica `email.*` a RabbitMQ; `certificate.*` y `crew.ticket` salen igual.
+
 ## Cómo iniciar (Oracle — EP1-21 / EP1-14)
 
 Requiere JDK 21, `JAVA_HOME` apuntando a ese JDK, acceso a Oracle Autonomous y su wallet. Maven Wrapper
@@ -138,6 +142,14 @@ curl -X POST http://localhost:8081/api/requests/<id>/cancel `
   -H "X-User-Id: oid-de-prueba" `
   -H "X-User-Roles: Vecino" `
   -H "X-User-Name: Alex%20Ampuero"
+
+# Calificar (solo el Vecino titular, solo en RESUELTO, una vez; EP3-74)
+curl -X POST http://localhost:8081/api/requests/<id>/rating `
+  -H "Content-Type: application/json" `
+  -H "X-User-Id: oid-de-prueba" `
+  -H "X-User-Roles: Vecino" `
+  -H "X-User-Name: Alex%20Ampuero" `
+  -d "{\"score\":5,\"comment\":\"Rapido\"}"
 ```
 
 Si la tabla ya tenía filas viejas sin `address`/`solicitante_id`, vaciala una vez en SQL:  
@@ -419,18 +431,20 @@ EP1.5-18 protege `changeStatus()` con `findByIdForUpdate()` y bloqueo pesimista 
 
 La prueba `RequestStatusConcurrencyTest` usa dos transacciones independientes y H2, siguiendo Catalog. H2 se agrega solo con alcance test y versión del BOM; no valida Oracle desplegado. Ejecutar `.\mvnw.cmd verify`. Esta protección no convierte la coordinación con Catalog en una transacción distribuida ni garantiza recuperación ante respuestas perdidas.
 
-## Eventos del trámite (EP2-22 / EP2-23 / EP2-24)
+## Eventos del trámite (EP2-22 / EP2-23 / EP2-24 / EP3-33)
 
 El alta confirmada en `INGRESADO` publica `certificate.receipt`. `INGRESADO → ADMITIDO` publica
 `email.admitted`; `EN_TERRENO → RESUELTO` publica `email.resolved` y `certificate.resolved`.
 Estos mensajes usan el exchange topic de `RabbitNamesProperties` (`cmd.topic`) y routing key igual al `type`.
 `EN_GESTION → EN_TERRENO` publica `crew.ticket` en el exchange direct configurado (`cmd.direct`), con
 routing key `crew.ticket`, y `email.visit` en el topic configurado, con routing key `email.visit`.
+Cualquier paso a `RECHAZADO` publica `email.rejected` en el topic, con routing key `email.rejected` (EP3-33).
 Las demás transiciones y las lecturas no publican eventos. Un estado repetido conserva el 409.
 
 La publicación es asíncrona y posterior al commit, también cuando existe una transacción exterior. Rollback,
 fallo de commit o transición rechazada no producen eventos. El payload incluye `requestId`, `folio`, `procedureType`,
-`procedureLabel`, `address` y `solicitanteEmail`, usando los snapshots persistidos. Un correo null se publica
+`procedureLabel`, `address`, `solicitanteEmail` y `rejectionReason`, usando los snapshots persistidos.
+`rejectionReason` solo tiene valor en `email.rejected`. `interventionReason` del Admin nunca viaja a RabbitMQ (EP3-04, sección 6.3). Un correo null se publica
 igualmente y Notify lo rechaza hacia la DLQ de email, sin impedir el procesamiento del ticket de cuadrilla
 o del certificado. Los certificados no requieren correo.
 El productor conserva los null; Notify usa el código como respaldo de presentación de una etiqueta null.

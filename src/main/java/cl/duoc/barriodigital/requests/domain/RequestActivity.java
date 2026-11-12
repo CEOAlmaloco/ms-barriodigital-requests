@@ -188,6 +188,41 @@ public class RequestActivity {
     }
 
     /**
+     * Encuesta de satisfacción del titular (EP3-74). La ve el vecino.
+     * El score queda en reason como texto; el comentario opcional en note.
+     */
+    public static RequestActivity rated(
+            String requestId,
+            Instant occurredAt,
+            String actorId,
+            String actorName,
+            String actorRole,
+            int score,
+            String comment
+    ) {
+        String summary = "Calificó el trámite con " + score + ".";
+        if (comment != null && !comment.isBlank()) {
+            summary = summary + " Comentario: " + comment.trim();
+        }
+        if (summary.length() > 500) {
+            summary = summary.substring(0, 500);
+        }
+        RequestActivity event = new RequestActivity(
+                requestId,
+                occurredAt,
+                ActivityKind.CALIFICACION,
+                ActivityVisibility.PUBLICO,
+                actorId,
+                actorName,
+                actorRole,
+                summary
+        );
+        event.reason = Integer.toString(score);
+        event.note = blankToNull(comment);
+        return event;
+    }
+
+    /**
      * Gestión declarada por el funcionario. Queda interna.
      * No prueba que el vecino haya recibido la llamada o el mensaje.
      */

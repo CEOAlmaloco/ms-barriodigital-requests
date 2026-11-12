@@ -36,7 +36,9 @@ public record RequestView(
         boolean hasAssignee,
         String assigneeId,
         String assigneeName,
-        Integer slaBusinessDays
+        Integer slaBusinessDays,
+        Integer satisfactionScore,
+        String satisfactionComment
 ) {
 
     /** Arma la vista según el rol de quien llama. */
@@ -69,7 +71,10 @@ public record RequestView(
                 staff ? request.getAssigneeId() : null,
                 staff ? request.getAssigneeName() : null,
                 // Snapshot del alta, para los cuatro roles (EP3-04, sección 6.1, y EP3-06, sección 7).
-                request.getSlaBusinessDays()
+                request.getSlaBusinessDays(),
+                // Encuesta: los cuatro roles ven la nota; el comentario también (EP3-74).
+                request.getSatisfactionScore(),
+                request.getSatisfactionComment()
         );
     }
 }

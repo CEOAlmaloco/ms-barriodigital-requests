@@ -42,7 +42,8 @@ import static org.mockito.Mockito.verifyNoMoreInteractions;
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
 @Transactional(propagation = Propagation.NOT_SUPPORTED)
-@Import({RequestService.class, FolioCounterService.class, DomainEventRecorder.class, ClockConfig.class})
+@Import({RequestService.class, FolioCounterService.class, DomainEventRecorder.class, ClockConfig.class,
+        NotificationPreferenceService.class})
 @TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class RequestStatusConcurrencyTest {
 
@@ -100,7 +101,7 @@ class RequestStatusConcurrencyTest {
             assertEquals(target, repository.findById(id).orElseThrow().getStatus());
             // Son llamadas al publicador simulado, no recepciones verificadas en un broker.
             ArgumentCaptor<UUID> trace = ArgumentCaptor.forClass(UUID.class);
-            RequestEventPayload payload = new RequestEventPayload(id, created.getFolio(), "bache", null, "dir", null);
+            RequestEventPayload payload = new RequestEventPayload(id, created.getFolio(), "bache", null, "dir", null, null);
             verify(publisher).publish(eq(type), eq(id), eq(payload), trace.capture());
             if (target == RequestStatus.EN_TERRENO || target == RequestStatus.RESUELTO) {
                 verify(publisher).publish(eq(target == RequestStatus.EN_TERRENO ? "email.visit" : "certificate.resolved"),

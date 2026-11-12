@@ -5,6 +5,7 @@ import cl.duoc.barriodigital.requests.domain.ProcedureTypes;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.domain.RequestTransitions;
 import cl.duoc.barriodigital.requests.service.ImageAttachmentSanitizer;
+import cl.duoc.barriodigital.requests.service.NotificationPreferenceService;
 import cl.duoc.barriodigital.requests.service.RequestActivityService;
 import cl.duoc.barriodigital.requests.service.RequestAssignmentService;
 import cl.duoc.barriodigital.requests.service.RequestAttachmentContent;
@@ -17,7 +18,9 @@ import cl.duoc.barriodigital.requests.web.dto.AssignRequestDto;
 import cl.duoc.barriodigital.requests.web.dto.AssigneeView;
 import cl.duoc.barriodigital.requests.web.dto.ChangeStatusDto;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
+import cl.duoc.barriodigital.requests.web.dto.NotificationPreferenceDto;
 import cl.duoc.barriodigital.requests.web.dto.PageView;
+import cl.duoc.barriodigital.requests.web.dto.RateRequestDto;
 import cl.duoc.barriodigital.requests.web.dto.RegisterGestionDto;
 import cl.duoc.barriodigital.requests.web.dto.RequestView;
 import jakarta.validation.Valid;
@@ -59,15 +62,17 @@ public class RequestController {
     private final ImageAttachmentSanitizer imageSanitizer;
     private final StaffMemberService staffMembers;
     private final RequestAssignmentService assignment;
+    private final NotificationPreferenceService notificationPreferences;
 
-    /** Recibe los servicios del trámite, del alta, del historial, del personal y de la asignación, y el saneador. */
+    /** Recibe los servicios del trámite, del alta, del historial, del personal, de la asignación y de preferencias. */
     public RequestController(
             RequestService requestService,
             RequestCreationOrchestrationService creation,
             RequestActivityService activityService,
             ImageAttachmentSanitizer imageSanitizer,
             StaffMemberService staffMembers,
-            RequestAssignmentService assignment
+            RequestAssignmentService assignment,
+            NotificationPreferenceService notificationPreferences
     ) {
         this.requestService = requestService;
         this.creation = creation;
@@ -75,6 +80,7 @@ public class RequestController {
         this.imageSanitizer = imageSanitizer;
         this.staffMembers = staffMembers;
         this.assignment = assignment;
+        this.notificationPreferences = notificationPreferences;
     }
 
     /** Crea un trámite con el body y la identidad de los headers. */
@@ -159,6 +165,19 @@ public class RequestController {
         return RequestView.of(requestService.cancel(id, caller), caller);
     }
 
+    /** Encuesta de satisfacción. Solo el Vecino titular y solo en RESUELTO, una vez (EP3-74). */
+    @PostMapping("/{id}/rating")
+    public RequestView rate(
+            @PathVariable String id,
+            @Valid @RequestBody RateRequestDto body,
+            @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
+            @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles,
+            @RequestHeader(value = CallerContext.HEADER_USER_NAME, required = false) String userName
+    ) {
+        CallerContext caller = new CallerContext(userId, roles, userName);
+        return RequestView.of(requestService.rate(id, body.score(), body.comment(), caller), caller);
+    }
+
     /** Historial, gestiones visibles según el rol y los tiempos que sí se pueden calcular. */
     @GetMapping("/{id}/actividad")
     public ActividadView actividad(
@@ -219,6 +238,26 @@ public class RequestController {
             @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles
     ) {
         return staffMembers.assignees(new CallerContext(userId, roles));
+    }
+
+    /** Preferencia de avisos por correo del caller (EP3-65). Sin fila → emailEnabled true. */
+    @GetMapping("/me/notification-preferences")
+    public NotificationPreferenceDto getNotificationPreferences(
+            @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
+            @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles
+    ) {
+        return NotificationPreferenceDto.of(notificationPreferences.get(new CallerContext(userId, roles)));
+    }
+
+    /** Guarda si el caller recibe avisos por correo (EP3-65). */
+    @PutMapping("/me/notification-preferences")
+    public NotificationPreferenceDto putNotificationPreferences(
+            @Valid @RequestBody NotificationPreferenceDto body,
+            @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
+            @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles
+    ) {
+        return NotificationPreferenceDto.of(
+                notificationPreferences.update(body.emailEnabled(), new CallerContext(userId, roles)));
     }
 
     /** Devuelve un trámite. Quien no es personal solo obtiene el suyo. */

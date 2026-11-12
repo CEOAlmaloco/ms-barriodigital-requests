@@ -87,10 +87,11 @@ public class RequestService {
     private final EventPublisher publisher;
     private final FolioCounterService folios;
     private final DomainEventRecorder events;
+    private final NotificationPreferenceService notificationPreferences;
 
     /**
-     * Recibe los repositorios del trámite y su imagen, el historial, el publicador de RabbitMQ, el contador de folios
-     * y el registro del outbox.
+     * Recibe los repositorios del trámite y su imagen, el historial, el publicador de RabbitMQ, el contador de folios,
+     * el registro del outbox y las preferencias de aviso (EP3-65).
      */
     public RequestService(
             MunicipalRequestRepository repository,
@@ -98,7 +99,8 @@ public class RequestService {
             RequestAttachmentRepository attachments,
             EventPublisher publisher,
             FolioCounterService folios,
-            DomainEventRecorder events
+            DomainEventRecorder events,
+            NotificationPreferenceService notificationPreferences
     ) {
         this.repository = repository;
         this.activity = activity;
@@ -106,6 +108,7 @@ public class RequestService {
         this.publisher = publisher;
         this.folios = folios;
         this.events = events;
+        this.notificationPreferences = notificationPreferences;
     }
 
     /**
@@ -449,13 +452,64 @@ public class RequestService {
     }
 
     /**
+     * Encuesta de satisfacción (EP3-74). Solo el Vecino titular, solo en RESUELTO, una sola vez.
+     * Orden: 400 sin identidad, 403 por rol, 404, 403 si no es el titular, 409 si no está RESUELTO o ya calificó.
+     */
+    @Transactional
+    public MunicipalRequest rate(String id, Integer score, String comment, CallerContext caller) {
+        requireUserId(caller);
+        if (!caller.isVecino()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo el Vecino titular puede calificar el tramite");
+        }
+        if (score == null || score < 1 || score > 5) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "score debe estar entre 1 y 5");
+        }
+        String cleaned = blankToNull(comment);
+        if (cleaned != null && cleaned.length() > 500) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "comment no puede superar 500 caracteres");
+        }
+
+        MunicipalRequest found = repository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado"));
+        if (!caller.userId().trim().equals(found.getSolicitanteId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo el titular del tramite puede calificarlo");
+        }
+        if (found.getStatus() != RequestStatus.RESUELTO) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Solo se puede calificar un tramite RESUELTO"
+            );
+        }
+        if (found.isRated()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El tramite ya fue calificado");
+        }
+
+        found.applyRating(score, cleaned);
+        MunicipalRequest saved = repository.save(found);
+        UUID traceId = UUID.randomUUID();
+        RequestActivity rated = activity.save(RequestActivity.rated(
+                saved.getId(),
+                saved.getUpdatedAt(),
+                caller.userId().trim(),
+                snapshotName(caller.userName(), caller.userId()),
+                caller.role(),
+                score,
+                cleaned
+        ));
+        events.record(saved, rated, traceId);
+        return saved;
+    }
+
+    /**
      * Elige los eventos de un cambio de estado y los publica después del commit.
-     * INGRESADO a ADMITIDO publica email.admitted, EN_GESTION a EN_TERRENO publica crew.ticket y email.visit, y EN_TERRENO a RESUELTO publica email.resolved y certificate.resolved.
-     * Pasar a RECHAZADO o a EN_GESTION no publica.
+     * INGRESADO a ADMITIDO publica email.admitted, EN_GESTION a EN_TERRENO publica crew.ticket y email.visit, EN_TERRENO a RESUELTO publica email.resolved y certificate.resolved, y cualquier paso a RECHAZADO publica email.rejected (EP3-33).
+     * Pasar a EN_GESTION no publica.
      */
     private void publishStatusEventsAfterCommit(RequestStatus previous, MunicipalRequest saved, UUID traceId) {
         List<String> types;
-        if (previous == RequestStatus.INGRESADO && saved.getStatus() == RequestStatus.ADMITIDO) {
+        if (saved.getStatus() == RequestStatus.RECHAZADO) {
+            types = List.of("email.rejected");
+        } else if (previous == RequestStatus.INGRESADO && saved.getStatus() == RequestStatus.ADMITIDO) {
             types = List.of("email.admitted");
         } else if (previous == RequestStatus.EN_GESTION && saved.getStatus() == RequestStatus.EN_TERRENO) {
             types = List.of("crew.ticket", "email.visit");
@@ -470,6 +524,8 @@ public class RequestService {
 
     /**
      * Publica en RabbitMQ después del commit, cuando el trámite ya quedó guardado, con el traceId del evento de Kafka.
+     * Si el titular desactivó avisos por correo (EP3-65), se omiten los type email.*; certificate.* y crew.ticket salen igual.
+     * El payload se arma desde el trámite, no desde la actividad: lleva rejectionReason y nunca interventionReason.
      * Si un comando falla, se registra y se intenta el siguiente. RabbitMQ no usa el outbox: un aviso puede perderse.
      */
     private void publishAfterCommit(MunicipalRequest saved, List<String> types, UUID traceId) {
@@ -477,13 +533,18 @@ public class RequestService {
                 || !TransactionSynchronizationManager.isSynchronizationActive()) {
             throw new IllegalStateException("Los eventos de estado requieren una transaccion activa");
         }
+        List<String> toPublish = filterEmailCommands(
+                notificationPreferences.isEmailEnabled(saved.getSolicitanteId()), types);
+        if (toPublish.isEmpty()) {
+            return;
+        }
         RequestEventPayload payload = new RequestEventPayload(saved.getId(), saved.getFolio(), saved.getProcedureType(),
-                saved.getProcedureLabel(), saved.getAddress(), saved.getSolicitanteEmail());
+                saved.getProcedureLabel(), saved.getAddress(), saved.getSolicitanteEmail(), saved.getRejectionReason());
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             /** Cuando el commit terminó, publica cada evento. Si uno falla, lo registra y sigue con el siguiente. */
             @Override
             public void afterCommit() {
-                for (String type : types) {
+                for (String type : toPublish) {
                     try {
                         publisher.publish(type, payload.requestId(), payload, traceId);
                     } catch (RuntimeException ex) {
@@ -494,6 +555,16 @@ public class RequestService {
                 }
             }
         });
+    }
+
+    /**
+     * Si el correo está desactivado, quita los comandos email.*. Deja certificate.* y crew.ticket.
+     */
+    static List<String> filterEmailCommands(boolean emailEnabled, List<String> types) {
+        if (emailEnabled || types == null || types.isEmpty()) {
+            return types == null ? List.of() : types;
+        }
+        return types.stream().filter(type -> !type.startsWith("email.")).toList();
     }
 
     /** Interpreta el estado escrito. Si no es uno de los seis, responde 400. */

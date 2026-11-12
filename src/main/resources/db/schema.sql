@@ -23,6 +23,8 @@ CREATE TABLE municipal_requests (
     assignee_id     VARCHAR2(64),
     assignee_name   VARCHAR2(200),
     sla_business_days NUMBER(10),
+    satisfaction_score NUMBER(1),
+    satisfaction_comment VARCHAR2(500),
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL,
     updated_at      TIMESTAMP WITH TIME ZONE NOT NULL,
     CONSTRAINT uk_municipal_requests_folio UNIQUE (folio)
@@ -33,6 +35,14 @@ CREATE TABLE folio_counter (
     folio_year  NUMBER(4) NOT NULL,
     last_number NUMBER    NOT NULL,
     CONSTRAINT pk_folio_counter PRIMARY KEY (folio_year)
+);
+
+-- Preferencias de aviso por correo (EP3-65). Sin fila = email habilitado.
+CREATE TABLE user_notification_prefs (
+    user_id       VARCHAR2(64) NOT NULL,
+    email_enabled NUMBER(1) DEFAULT 1 NOT NULL,
+    updated_at    TIMESTAMP WITH TIME ZONE NOT NULL,
+    CONSTRAINT pk_user_notification_prefs PRIMARY KEY (user_id)
 );
 
 CREATE TABLE municipal_request_attachments (
@@ -73,7 +83,7 @@ CREATE TABLE request_activity (
     assignee_name          VARCHAR2(200),
     previous_assignee_id   VARCHAR2(64),
     previous_assignee_name VARCHAR2(200),
-    CONSTRAINT ck_request_activity_kind CHECK (kind IN ('CREADO', 'ESTADO', 'GESTION', 'ASIGNACION')),
+    CONSTRAINT ck_request_activity_kind CHECK (kind IN ('CREADO', 'ESTADO', 'GESTION', 'ASIGNACION', 'CALIFICACION')),
     -- Solo el hito público de asignación va sin actor (EP3-05). Las bases existentes usan assignment-request-activity.sql.
     CONSTRAINT ck_request_activity_actor
         CHECK (actor_id IS NOT NULL OR (kind = 'ASIGNACION' AND visibility = 'PUBLICO'))

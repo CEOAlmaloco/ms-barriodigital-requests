@@ -1,9 +1,9 @@
 package cl.duoc.barriodigital.requests.service;
 
 import cl.duoc.barriodigital.requests.TestListQueries;
+import cl.duoc.barriodigital.requests.domain.ActivityKind;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestActivity;
-import cl.duoc.barriodigital.requests.domain.RequestAttachment;
 import cl.duoc.barriodigital.requests.domain.RequestAttachment;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.messaging.DomainEventRecorder;
@@ -14,6 +14,7 @@ import cl.duoc.barriodigital.requests.persistence.RequestAttachmentRepository;
 import cl.duoc.barriodigital.requests.persistence.RequestActivityRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
@@ -84,6 +85,9 @@ class RequestServiceTest {
     @Mock
     private DomainEventRecorder events;
 
+    @Mock
+    private NotificationPreferenceService notificationPreferences;
+
     @InjectMocks
     private RequestService requestService;
 
@@ -96,6 +100,24 @@ class RequestServiceTest {
         TransactionSynchronizationManager.setActualTransactionActive(true);
         TransactionSynchronizationManager.initSynchronization();
         lenient().when(folios.next(anyInt())).thenReturn("BD-2026-000001");
+        lenient().when(notificationPreferences.isEmailEnabled(any())).thenReturn(true);
+    }
+
+    @Test
+    void changeStatusNoPublicaEmailSiElTitularDesactivoAvisosPeroSiCertificateYCrew() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(activity.save(any(RequestActivity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-vecino");
+        stored.setStatus(RequestStatus.EN_GESTION);
+        stored.assignTo("func", "Funcionario");
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
+        when(notificationPreferences.isEmailEnabled("oid-vecino")).thenReturn(false);
+
+        requestService.changeStatus("id", "EN_TERRENO", null, null, new CallerContext("func", "Funcionario"));
+
+        TransactionSynchronizationManager.getSynchronizations().forEach(s -> s.afterCommit());
+        verify(publisher).publish(eq("crew.ticket"), eq(stored.getId()), any(), any(UUID.class));
+        verify(publisher, never()).publish(eq("email.visit"), any(), any(), any());
     }
 
     /** Alta sin imagen con el instante fijo, como la llama el orquestador. */
@@ -123,7 +145,7 @@ class RequestServiceTest {
         when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(responsible(stored)));
         when(repository.save(stored)).thenReturn(stored);
         RequestEventPayload expected = new RequestEventPayload(stored.getId(), stored.getFolio(), "nuevo_tipo", "Etiqueta original",
-                "direccion original", "vecino@example.com");
+                "direccion original", "vecino@example.com", null);
 
         requestService.changeStatus("id", target, null,
                 null,
@@ -156,10 +178,10 @@ class RequestServiceTest {
         TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
         ArgumentCaptor<UUID> trace = ArgumentCaptor.forClass(UUID.class);
         verify(publisher).publish(eq(type), eq(stored.getId()),
-                eq(new RequestEventPayload(stored.getId(), stored.getFolio(), "bache", null, "dir", null)), trace.capture());
+                eq(new RequestEventPayload(stored.getId(), stored.getFolio(), "bache", null, "dir", null, null)), trace.capture());
         if (from == RequestStatus.EN_GESTION || from == RequestStatus.EN_TERRENO) {
             verify(publisher).publish(eq(from == RequestStatus.EN_GESTION ? "email.visit" : "certificate.resolved"), eq(stored.getId()),
-                    eq(new RequestEventPayload(stored.getId(), stored.getFolio(), "bache", null, "dir", null)), eq(trace.getValue()));
+                    eq(new RequestEventPayload(stored.getId(), stored.getFolio(), "bache", null, "dir", null, null)), eq(trace.getValue()));
         }
         verifyNoMoreInteractions(publisher);
     }
@@ -177,15 +199,70 @@ class RequestServiceTest {
         verifyNoInteractions(publisher);
     }
 
+    @Test
+    void admitidoAEnGestionNoRegistraEventos() {
+        MunicipalRequest stored = requestWithStatus(RequestStatus.ADMITIDO);
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(responsible(stored)));
+        when(repository.save(stored)).thenReturn(stored);
+        requestService.changeStatus("id", "EN_GESTION", null, null, new CallerContext("func", "Funcionario"));
+        assertTrue(TransactionSynchronizationManager.getSynchronizations().isEmpty());
+        verifyNoInteractions(publisher);
+    }
+
     @ParameterizedTest
-    @CsvSource({"ADMITIDO,EN_GESTION", "INGRESADO,RECHAZADO",
-            "ADMITIDO,RECHAZADO", "EN_GESTION,RECHAZADO", "EN_TERRENO,RECHAZADO"})
-    void otrasTransicionesNoRegistranEventos(RequestStatus from, String target) {
+    @ValueSource(strings = {"INGRESADO", "ADMITIDO", "EN_GESTION", "EN_TERRENO"})
+    void unRechazoPublicaEmailRejectedConElMotivo(RequestStatus from) {
         MunicipalRequest stored = requestWithStatus(from);
         when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(responsible(stored)));
         when(repository.save(stored)).thenReturn(stored);
-        requestService.changeStatus("id", target, "motivo", null, new CallerContext("func", "Funcionario"));
+
+        requestService.changeStatus("id", "RECHAZADO", "  Fuera de la comuna  ", null,
+                new CallerContext("func", "Funcionario"));
+
+        verifyNoInteractions(publisher);
+        TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
+        verify(publisher).publish(eq("email.rejected"), eq(stored.getId()),
+                eq(new RequestEventPayload(stored.getId(), stored.getFolio(), "bache", null, "dir", null,
+                        "Fuera de la comuna")),
+                any(UUID.class));
+        verifyNoMoreInteractions(publisher);
+    }
+
+    @Test
+    void unRechazoDelAdminNoExponeSuMotivoDeIntervencion() throws Exception {
+        MunicipalRequest stored = requestWithStatus(RequestStatus.ADMITIDO);
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(responsible(stored)));
+        when(repository.save(stored)).thenReturn(stored);
+
+        requestService.changeStatus("id", "RECHAZADO", "Duplicado", "Reclamo en la OIRS",
+                new CallerContext("admin-1", "Admin"));
+
+        TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
+        ArgumentCaptor<Object> payload = ArgumentCaptor.forClass(Object.class);
+        verify(publisher).publish(eq("email.rejected"), eq(stored.getId()), payload.capture(), any(UUID.class));
+        String json = new ObjectMapper().writeValueAsString(payload.getValue());
+        assertTrue(json.contains("\"rejectionReason\":\"Duplicado\""), json);
+        assertTrue(!json.contains("interventionReason") && !json.contains("OIRS"), json);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"RESUELTO", "RECHAZADO"})
+    void unRechazoInvalidoNoPublica(RequestStatus from) {
+        assertConflict(from, "RECHAZADO", new CallerContext("func", "Funcionario"));
         assertTrue(TransactionSynchronizationManager.getSynchronizations().isEmpty());
+        verifyNoInteractions(publisher);
+    }
+
+    @Test
+    void unRechazoNoPublicaSiElTitularDesactivoAvisos() {
+        MunicipalRequest stored = requestWithStatus(RequestStatus.INGRESADO);
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(responsible(stored)));
+        when(repository.save(stored)).thenReturn(stored);
+        when(notificationPreferences.isEmailEnabled("oid")).thenReturn(false);
+
+        requestService.changeStatus("id", "RECHAZADO", "Duplicado", null, new CallerContext("func", "Funcionario"));
+
+        TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
         verifyNoInteractions(publisher);
     }
 
@@ -229,7 +306,7 @@ class RequestServiceTest {
                 nullSnapshots ? null : "Etiqueta guardada");
         when(repository.save(any(MunicipalRequest.class))).thenReturn(saved);
         var expected = new RequestEventPayload(saved.getId(), saved.getFolio(), "tipo_guardado", saved.getProcedureLabel(),
-                "direccion guardada", saved.getSolicitanteEmail());
+                "direccion guardada", saved.getSolicitanteEmail(), null);
         MunicipalRequest returned = create(new CreateRequestDto("d", "bache", "otra direccion"),
                 new CallerContext("vecino", "Vecino", "Vecino", "otro@example.com", "Otra etiqueta"));
         assertSame(saved, returned);
@@ -1022,6 +1099,59 @@ class RequestServiceTest {
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
                 requestService.changeStatus("no-existe", "ADMITIDO", null, null, new CallerContext("func", "Funcionario")));
         assertEquals(404, ex.getStatusCode().value());
+    }
+
+    @Test
+    void rateDelTitularEnResueltoGuardaNotaYRegistraElEvento() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(activity.save(any(RequestActivity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-vecino", "Vecino");
+        stored.setStatus(RequestStatus.RESUELTO);
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(stored));
+
+        MunicipalRequest updated = requestService.rate(
+                "id-1", 4, "  Rapido  ", new CallerContext("oid-vecino", "Vecino", "Vecino%20Uno"));
+
+        assertEquals(4, updated.getSatisfactionScore());
+        assertEquals("Rapido", updated.getSatisfactionComment());
+        ArgumentCaptor<RequestActivity> mark = ArgumentCaptor.forClass(RequestActivity.class);
+        verify(activity).save(mark.capture());
+        assertEquals(ActivityKind.CALIFICACION, mark.getValue().getKind());
+        assertEquals("4", mark.getValue().getReason());
+        assertEquals("Rapido", mark.getValue().getNote());
+        verify(events).record(eq(updated), eq(mark.getValue()), any(UUID.class));
+    }
+
+    @Test
+    void rateFueraDeResueltoORepetidoEs409() {
+        MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-vecino");
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(stored));
+
+        ResponseStatusException notResolved = assertThrows(ResponseStatusException.class, () ->
+                requestService.rate("id-1", 5, null, new CallerContext("oid-vecino", "Vecino")));
+        assertEquals(409, notResolved.getStatusCode().value());
+        assertEquals("Solo se puede calificar un tramite RESUELTO", notResolved.getReason());
+
+        stored.setStatus(RequestStatus.RESUELTO);
+        stored.applyRating(3, null);
+        ResponseStatusException again = assertThrows(ResponseStatusException.class, () ->
+                requestService.rate("id-1", 5, null, new CallerContext("oid-vecino", "Vecino")));
+        assertEquals(409, again.getStatusCode().value());
+        assertEquals("El tramite ya fue calificado", again.getReason());
+        verify(events, never()).record(any(), any(), any());
+    }
+
+    @Test
+    void rateDeStaffOScoreInvalido() {
+        ResponseStatusException staff = assertThrows(ResponseStatusException.class, () ->
+                requestService.rate("id-1", 5, null, new CallerContext("func", "Funcionario")));
+        assertEquals(403, staff.getStatusCode().value());
+        verify(repository, never()).findByIdForUpdate(any());
+
+        ResponseStatusException bad = assertThrows(ResponseStatusException.class, () ->
+                requestService.rate("id-1", 0, null, new CallerContext("oid-vecino", "Vecino")));
+        assertEquals(400, bad.getStatusCode().value());
+        assertEquals("score debe estar entre 1 y 5", bad.getReason());
     }
 
     private void assertStatusChange(
