@@ -8,5 +8,7 @@ public enum ActivityKind {
     ESTADO,
     GESTION,
     /** Toma, asignación o reasignación del responsable (contrato EP3-05, sección 6). */
-    ASIGNACION
+    ASIGNACION,
+    /** Encuesta de satisfacción del titular (EP3-74). */
+    CALIFICACION
 }

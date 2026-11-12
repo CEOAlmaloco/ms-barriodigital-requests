@@ -403,6 +403,55 @@ public class RequestService {
     }
 
     /**
+     * Encuesta de satisfacción (EP3-74). Solo el Vecino titular, solo en RESUELTO, una sola vez.
+     * Orden: 400 sin identidad, 403 por rol, 404, 403 si no es el titular, 409 si no está RESUELTO o ya calificó.
+     */
+    @Transactional
+    public MunicipalRequest rate(String id, Integer score, String comment, CallerContext caller) {
+        requireUserId(caller);
+        if (!caller.isVecino()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo el Vecino titular puede calificar el tramite");
+        }
+        if (score == null || score < 1 || score > 5) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "score debe estar entre 1 y 5");
+        }
+        String cleaned = blankToNull(comment);
+        if (cleaned != null && cleaned.length() > 500) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "comment no puede superar 500 caracteres");
+        }
+
+        MunicipalRequest found = repository.findByIdForUpdate(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado"));
+        if (!caller.userId().trim().equals(found.getSolicitanteId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo el titular del tramite puede calificarlo");
+        }
+        if (found.getStatus() != RequestStatus.RESUELTO) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "Solo se puede calificar un tramite RESUELTO"
+            );
+        }
+        if (found.isRated()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "El tramite ya fue calificado");
+        }
+
+        found.applyRating(score, cleaned);
+        MunicipalRequest saved = repository.save(found);
+        UUID traceId = UUID.randomUUID();
+        RequestActivity rated = activity.save(RequestActivity.rated(
+                saved.getId(),
+                saved.getUpdatedAt(),
+                caller.userId().trim(),
+                snapshotName(caller.userName(), caller.userId()),
+                caller.role(),
+                score,
+                cleaned
+        ));
+        events.record(saved, rated, traceId);
+        return saved;
+    }
+
+    /**
      * Elige los eventos de un cambio de estado y los publica después del commit.
      * INGRESADO a ADMITIDO publica email.admitted, EN_GESTION a EN_TERRENO publica crew.ticket y email.visit, y EN_TERRENO a RESUELTO publica email.resolved y certificate.resolved.
      * Pasar a RECHAZADO o a EN_GESTION no publica.

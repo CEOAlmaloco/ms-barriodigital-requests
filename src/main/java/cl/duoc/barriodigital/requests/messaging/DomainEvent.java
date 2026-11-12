@@ -76,4 +76,16 @@ public record DomainEvent(
             String reason
     ) {
     }
+
+    /**
+     * request.rated (EP3-74). score es 1..5. comment va siempre (null si el titular no escribió).
+     * No lleva correo ni datos del solicitante.
+     */
+    public record Rated(
+            String requestId,
+            String folio,
+            int score,
+            String comment
+    ) {
+    }
 }

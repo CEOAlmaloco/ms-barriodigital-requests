@@ -1,9 +1,9 @@
 package cl.duoc.barriodigital.requests.service;
 
 import cl.duoc.barriodigital.requests.TestListQueries;
+import cl.duoc.barriodigital.requests.domain.ActivityKind;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestActivity;
-import cl.duoc.barriodigital.requests.domain.RequestAttachment;
 import cl.duoc.barriodigital.requests.domain.RequestAttachment;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.messaging.DomainEventRecorder;
@@ -980,6 +980,59 @@ class RequestServiceTest {
         ResponseStatusException ex = assertThrows(ResponseStatusException.class, () ->
                 requestService.changeStatus("no-existe", "ADMITIDO", null, null, new CallerContext("func", "Funcionario")));
         assertEquals(404, ex.getStatusCode().value());
+    }
+
+    @Test
+    void rateDelTitularEnResueltoGuardaNotaYRegistraElEvento() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(activity.save(any(RequestActivity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-vecino", "Vecino");
+        stored.setStatus(RequestStatus.RESUELTO);
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(stored));
+
+        MunicipalRequest updated = requestService.rate(
+                "id-1", 4, "  Rapido  ", new CallerContext("oid-vecino", "Vecino", "Vecino%20Uno"));
+
+        assertEquals(4, updated.getSatisfactionScore());
+        assertEquals("Rapido", updated.getSatisfactionComment());
+        ArgumentCaptor<RequestActivity> mark = ArgumentCaptor.forClass(RequestActivity.class);
+        verify(activity).save(mark.capture());
+        assertEquals(ActivityKind.CALIFICACION, mark.getValue().getKind());
+        assertEquals("4", mark.getValue().getReason());
+        assertEquals("Rapido", mark.getValue().getNote());
+        verify(events).record(eq(updated), eq(mark.getValue()), any(UUID.class));
+    }
+
+    @Test
+    void rateFueraDeResueltoORepetidoEs409() {
+        MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-vecino");
+        when(repository.findByIdForUpdate("id-1")).thenReturn(Optional.of(stored));
+
+        ResponseStatusException notResolved = assertThrows(ResponseStatusException.class, () ->
+                requestService.rate("id-1", 5, null, new CallerContext("oid-vecino", "Vecino")));
+        assertEquals(409, notResolved.getStatusCode().value());
+        assertEquals("Solo se puede calificar un tramite RESUELTO", notResolved.getReason());
+
+        stored.setStatus(RequestStatus.RESUELTO);
+        stored.applyRating(3, null);
+        ResponseStatusException again = assertThrows(ResponseStatusException.class, () ->
+                requestService.rate("id-1", 5, null, new CallerContext("oid-vecino", "Vecino")));
+        assertEquals(409, again.getStatusCode().value());
+        assertEquals("El tramite ya fue calificado", again.getReason());
+        verify(events, never()).record(any(), any(), any());
+    }
+
+    @Test
+    void rateDeStaffOScoreInvalido() {
+        ResponseStatusException staff = assertThrows(ResponseStatusException.class, () ->
+                requestService.rate("id-1", 5, null, new CallerContext("func", "Funcionario")));
+        assertEquals(403, staff.getStatusCode().value());
+        verify(repository, never()).findByIdForUpdate(any());
+
+        ResponseStatusException bad = assertThrows(ResponseStatusException.class, () ->
+                requestService.rate("id-1", 0, null, new CallerContext("oid-vecino", "Vecino")));
+        assertEquals(400, bad.getStatusCode().value());
+        assertEquals("score debe estar entre 1 y 5", bad.getReason());
     }
 
     private void assertStatusChange(

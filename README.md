@@ -6,6 +6,7 @@ Puerto: **8081**
 
 Estados del caso: `INGRESADO → ADMITIDO → EN_GESTION → EN_TERRENO → RESUELTO | RECHAZADO`
 
+Encuesta (EP3-74): el titular califica un trámite `RESUELTO` una sola vez con `POST /api/requests/{id}/rating` (`score` 1..5, `comment` opcional) y queda `request.rated` en el outbox.
 Preferencias de aviso (EP3-65): `GET|PUT /api/requests/me/notification-preferences` con `{ "emailEnabled": true|false }`.
 Si el titular desactiva el correo, requests no publica `email.*` a RabbitMQ; `certificate.*` y `crew.ticket` salen igual.
 
@@ -135,6 +136,14 @@ curl -X PUT http://localhost:8081/api/requests/<id>/status `
   -H "X-User-Id: oid-funcionario" `
   -H "X-User-Roles: Funcionario" `
   -d "{\"status\":\"ADMITIDO\"}"
+
+# Calificar (solo el Vecino titular, solo en RESUELTO, una vez; EP3-74)
+curl -X POST http://localhost:8081/api/requests/<id>/rating `
+  -H "Content-Type: application/json" `
+  -H "X-User-Id: oid-de-prueba" `
+  -H "X-User-Roles: Vecino" `
+  -H "X-User-Name: Alex%20Ampuero" `
+  -d "{\"score\":5,\"comment\":\"Rapido\"}"
 ```
 
 Si la tabla ya tenía filas viejas sin `address`/`solicitante_id`, vaciala una vez en SQL:  
