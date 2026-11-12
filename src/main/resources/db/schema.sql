@@ -37,6 +37,14 @@ CREATE TABLE folio_counter (
     CONSTRAINT pk_folio_counter PRIMARY KEY (folio_year)
 );
 
+-- Preferencias de aviso por correo (EP3-65). Sin fila = email habilitado.
+CREATE TABLE user_notification_prefs (
+    user_id       VARCHAR2(64) NOT NULL,
+    email_enabled NUMBER(1) DEFAULT 1 NOT NULL,
+    updated_at    TIMESTAMP WITH TIME ZONE NOT NULL,
+    CONSTRAINT pk_user_notification_prefs PRIMARY KEY (user_id)
+);
+
 CREATE TABLE municipal_request_attachments (
     request_id      VARCHAR2(36)  PRIMARY KEY,
     attachment_data BLOB          NOT NULL,

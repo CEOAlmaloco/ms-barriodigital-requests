@@ -87,10 +87,11 @@ public class RequestService {
     private final EventPublisher publisher;
     private final FolioCounterService folios;
     private final DomainEventRecorder events;
+    private final NotificationPreferenceService notificationPreferences;
 
     /**
-     * Recibe los repositorios del trámite y su imagen, el historial, el publicador de RabbitMQ, el contador de folios
-     * y el registro del outbox.
+     * Recibe los repositorios del trámite y su imagen, el historial, el publicador de RabbitMQ, el contador de folios,
+     * el registro del outbox y las preferencias de aviso (EP3-65).
      */
     public RequestService(
             MunicipalRequestRepository repository,
@@ -98,7 +99,8 @@ public class RequestService {
             RequestAttachmentRepository attachments,
             EventPublisher publisher,
             FolioCounterService folios,
-            DomainEventRecorder events
+            DomainEventRecorder events,
+            NotificationPreferenceService notificationPreferences
     ) {
         this.repository = repository;
         this.activity = activity;
@@ -106,6 +108,7 @@ public class RequestService {
         this.publisher = publisher;
         this.folios = folios;
         this.events = events;
+        this.notificationPreferences = notificationPreferences;
     }
 
     /**
@@ -470,6 +473,7 @@ public class RequestService {
 
     /**
      * Publica en RabbitMQ después del commit, cuando el trámite ya quedó guardado, con el traceId del evento de Kafka.
+     * Si el titular desactivó avisos por correo (EP3-65), se omiten los type email.*; certificate.* y crew.ticket salen igual.
      * Si un comando falla, se registra y se intenta el siguiente. RabbitMQ no usa el outbox: un aviso puede perderse.
      */
     private void publishAfterCommit(MunicipalRequest saved, List<String> types, UUID traceId) {
@@ -477,13 +481,18 @@ public class RequestService {
                 || !TransactionSynchronizationManager.isSynchronizationActive()) {
             throw new IllegalStateException("Los eventos de estado requieren una transaccion activa");
         }
+        List<String> toPublish = filterEmailCommands(
+                notificationPreferences.isEmailEnabled(saved.getSolicitanteId()), types);
+        if (toPublish.isEmpty()) {
+            return;
+        }
         RequestEventPayload payload = new RequestEventPayload(saved.getId(), saved.getFolio(), saved.getProcedureType(),
                 saved.getProcedureLabel(), saved.getAddress(), saved.getSolicitanteEmail());
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             /** Cuando el commit terminó, publica cada evento. Si uno falla, lo registra y sigue con el siguiente. */
             @Override
             public void afterCommit() {
-                for (String type : types) {
+                for (String type : toPublish) {
                     try {
                         publisher.publish(type, payload.requestId(), payload, traceId);
                     } catch (RuntimeException ex) {
@@ -494,6 +503,16 @@ public class RequestService {
                 }
             }
         });
+    }
+
+    /**
+     * Si el correo está desactivado, quita los comandos email.*. Deja certificate.* y crew.ticket.
+     */
+    static List<String> filterEmailCommands(boolean emailEnabled, List<String> types) {
+        if (emailEnabled || types == null || types.isEmpty()) {
+            return types == null ? List.of() : types;
+        }
+        return types.stream().filter(type -> !type.startsWith("email.")).toList();
     }
 
     /** Interpreta el estado escrito. Si no es uno de los seis, responde 400. */

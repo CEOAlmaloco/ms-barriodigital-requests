@@ -7,6 +7,7 @@ import cl.duoc.barriodigital.requests.service.RequestActivityService;
 import cl.duoc.barriodigital.requests.service.RequestAssignmentService;
 import cl.duoc.barriodigital.requests.service.RequestCreationOrchestrationService;
 import cl.duoc.barriodigital.requests.service.RequestService;
+import cl.duoc.barriodigital.requests.service.NotificationPreferenceService;
 import cl.duoc.barriodigital.requests.service.StaffMemberService;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import org.junit.jupiter.api.Test;
@@ -56,6 +57,9 @@ class RequestControllerCreateTest {
 
     @MockBean
     private RequestAssignmentService assignment;
+
+    @MockBean
+    private NotificationPreferenceService notificationPreferences;
 
     @Test
     void postGuardaElEmailDelHeaderYLoDevuelve() throws Exception {

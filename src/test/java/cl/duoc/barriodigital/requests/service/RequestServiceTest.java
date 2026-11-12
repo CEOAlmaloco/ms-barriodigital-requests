@@ -84,6 +84,9 @@ class RequestServiceTest {
     @Mock
     private DomainEventRecorder events;
 
+    @Mock
+    private NotificationPreferenceService notificationPreferences;
+
     @InjectMocks
     private RequestService requestService;
 
@@ -96,6 +99,24 @@ class RequestServiceTest {
         TransactionSynchronizationManager.setActualTransactionActive(true);
         TransactionSynchronizationManager.initSynchronization();
         lenient().when(folios.next(anyInt())).thenReturn("BD-2026-000001");
+        lenient().when(notificationPreferences.isEmailEnabled(any())).thenReturn(true);
+    }
+
+    @Test
+    void changeStatusNoPublicaEmailSiElTitularDesactivoAvisosPeroSiCertificateYCrew() {
+        when(repository.save(any(MunicipalRequest.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(activity.save(any(RequestActivity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        MunicipalRequest stored = new MunicipalRequest("t", "d", "bache", "dir", "oid-vecino");
+        stored.setStatus(RequestStatus.EN_GESTION);
+        stored.assignTo("func", "Funcionario");
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(stored));
+        when(notificationPreferences.isEmailEnabled("oid-vecino")).thenReturn(false);
+
+        requestService.changeStatus("id", "EN_TERRENO", null, null, new CallerContext("func", "Funcionario"));
+
+        TransactionSynchronizationManager.getSynchronizations().forEach(s -> s.afterCommit());
+        verify(publisher).publish(eq("crew.ticket"), eq(stored.getId()), any(), any(UUID.class));
+        verify(publisher, never()).publish(eq("email.visit"), any(), any(), any());
     }
 
     /** Alta sin imagen con el instante fijo, como la llama el orquestador. */

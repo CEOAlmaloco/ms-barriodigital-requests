@@ -7,6 +7,8 @@ Puerto: **8081**
 Estados del caso: `INGRESADO → ADMITIDO → EN_GESTION → EN_TERRENO → RESUELTO | RECHAZADO`
 
 Encuesta (EP3-74): el titular califica un trámite `RESUELTO` una sola vez con `POST /api/requests/{id}/rating` (`score` 1..5, `comment` opcional) y queda `request.rated` en el outbox.
+Preferencias de aviso (EP3-65): `GET|PUT /api/requests/me/notification-preferences` con `{ "emailEnabled": true|false }`.
+Si el titular desactiva el correo, requests no publica `email.*` a RabbitMQ; `certificate.*` y `crew.ticket` salen igual.
 
 ## Cómo iniciar (Oracle — EP1-21 / EP1-14)
 
