@@ -6,6 +6,7 @@ import cl.duoc.barriodigital.requests.service.RequestActivityService;
 import cl.duoc.barriodigital.requests.service.RequestAssignmentService;
 import cl.duoc.barriodigital.requests.service.RequestCreationOrchestrationService;
 import cl.duoc.barriodigital.requests.service.RequestService;
+import cl.duoc.barriodigital.requests.service.NotificationPreferenceService;
 import cl.duoc.barriodigital.requests.service.StaffMemberService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +45,9 @@ class SingleRoleInterceptorTest {
 
     @MockBean
     private RequestAssignmentService assignment;
+
+    @MockBean
+    private NotificationPreferenceService notificationPreferences;
 
     @Test
     void sinRolResponde403AntesDelCasoDeUso() throws Exception {

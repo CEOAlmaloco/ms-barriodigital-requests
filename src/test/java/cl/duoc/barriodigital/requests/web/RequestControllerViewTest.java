@@ -9,6 +9,7 @@ import cl.duoc.barriodigital.requests.service.RequestAssignmentService;
 import cl.duoc.barriodigital.requests.service.RequestCreationOrchestrationService;
 import cl.duoc.barriodigital.requests.service.RequestListQuery;
 import cl.duoc.barriodigital.requests.service.RequestService;
+import cl.duoc.barriodigital.requests.service.NotificationPreferenceService;
 import cl.duoc.barriodigital.requests.service.StaffMemberService;
 import cl.duoc.barriodigital.requests.web.dto.AssigneeView;
 import org.junit.jupiter.api.Test;
@@ -64,6 +65,9 @@ class RequestControllerViewTest {
 
     @MockBean
     private RequestAssignmentService assignment;
+
+    @MockBean
+    private NotificationPreferenceService notificationPreferences;
 
     @Test
     void elDetalleNoEntregaElCorreoAlAuditorYSiAlFuncionario() throws Exception {

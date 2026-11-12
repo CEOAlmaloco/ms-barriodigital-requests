@@ -27,7 +27,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 /** Filtro por días civiles de Chile contra la consulta real en H2; no valida el entorno Oracle desplegado. */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.ANY)
-@Import({RequestService.class, FolioCounterService.class, DomainEventRecorder.class, ClockConfig.class})
+@Import({RequestService.class, FolioCounterService.class, DomainEventRecorder.class, ClockConfig.class,
+        NotificationPreferenceService.class})
 @TestPropertySource(properties = "spring.jpa.hibernate.ddl-auto=create-drop")
 class RequestListCivilDayTest {
 
