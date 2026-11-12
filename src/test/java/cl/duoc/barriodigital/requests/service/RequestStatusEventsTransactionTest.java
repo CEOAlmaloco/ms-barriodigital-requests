@@ -160,6 +160,32 @@ class RequestStatusEventsTransactionTest {
     }
 
     @Test
+    void rechazoPublicaEmailRejectedDespuesDelCommitConElMotivoGuardado() {
+        MunicipalRequest initial = create(RequestStatus.EN_GESTION);
+        new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            service.changeStatus(initial.getId(), "RECHAZADO", "Fuera de la comuna", null, funcionario);
+            verifyNoInteractions(publisher);
+        });
+        assertEquals("Fuera de la comuna", repository.findById(initial.getId()).orElseThrow().getRejectionReason());
+        verify(publisher).publish(eq("email.rejected"), eq(initial.getId()),
+                eq(new RequestEventPayload(initial.getId(), initial.getFolio(), "bache", "Etiqueta guardada", "dir",
+                        "vecino@example.com", "Fuera de la comuna")),
+                any(UUID.class));
+        verifyNoMoreInteractions(publisher);
+    }
+
+    @Test
+    void rollbackDeUnRechazoNoPublica() {
+        MunicipalRequest initial = create(RequestStatus.ADMITIDO);
+        new TransactionTemplate(transactions).executeWithoutResult(tx -> {
+            service.changeStatus(initial.getId(), "RECHAZADO", "Duplicado", null, funcionario);
+            tx.setRollbackOnly();
+        });
+        verifyNoInteractions(publisher);
+        assertEquals(RequestStatus.ADMITIDO, repository.findById(initial.getId()).orElseThrow().getStatus());
+    }
+
+    @Test
     void repeticionYSaltoInvalidoNoPublicanElPar() {
         MunicipalRequest initial = create(RequestStatus.EN_GESTION);
         service.changeStatus(initial.getId(), "EN_TERRENO", null, null, funcionario);
@@ -291,6 +317,6 @@ class RequestStatusEventsTransactionTest {
     private RequestEventPayload payload(MunicipalRequest request) {
         return new RequestEventPayload(request.getId(), request.getFolio(), request.getProcedureType(),
                 request.getProcedureLabel(),
-                request.getAddress(), request.getSolicitanteEmail());
+                request.getAddress(), request.getSolicitanteEmail(), null);
     }
 }

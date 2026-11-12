@@ -453,12 +453,14 @@ public class RequestService {
 
     /**
      * Elige los eventos de un cambio de estado y los publica después del commit.
-     * INGRESADO a ADMITIDO publica email.admitted, EN_GESTION a EN_TERRENO publica crew.ticket y email.visit, y EN_TERRENO a RESUELTO publica email.resolved y certificate.resolved.
-     * Pasar a RECHAZADO o a EN_GESTION no publica.
+     * INGRESADO a ADMITIDO publica email.admitted, EN_GESTION a EN_TERRENO publica crew.ticket y email.visit, EN_TERRENO a RESUELTO publica email.resolved y certificate.resolved, y cualquier paso a RECHAZADO publica email.rejected (EP3-33).
+     * Pasar a EN_GESTION no publica.
      */
     private void publishStatusEventsAfterCommit(RequestStatus previous, MunicipalRequest saved, UUID traceId) {
         List<String> types;
-        if (previous == RequestStatus.INGRESADO && saved.getStatus() == RequestStatus.ADMITIDO) {
+        if (saved.getStatus() == RequestStatus.RECHAZADO) {
+            types = List.of("email.rejected");
+        } else if (previous == RequestStatus.INGRESADO && saved.getStatus() == RequestStatus.ADMITIDO) {
             types = List.of("email.admitted");
         } else if (previous == RequestStatus.EN_GESTION && saved.getStatus() == RequestStatus.EN_TERRENO) {
             types = List.of("crew.ticket", "email.visit");
@@ -474,6 +476,7 @@ public class RequestService {
     /**
      * Publica en RabbitMQ después del commit, cuando el trámite ya quedó guardado, con el traceId del evento de Kafka.
      * Si el titular desactivó avisos por correo (EP3-65), se omiten los type email.*; certificate.* y crew.ticket salen igual.
+     * El payload se arma desde el trámite, no desde la actividad: lleva rejectionReason y nunca interventionReason.
      * Si un comando falla, se registra y se intenta el siguiente. RabbitMQ no usa el outbox: un aviso puede perderse.
      */
     private void publishAfterCommit(MunicipalRequest saved, List<String> types, UUID traceId) {
@@ -487,7 +490,7 @@ public class RequestService {
             return;
         }
         RequestEventPayload payload = new RequestEventPayload(saved.getId(), saved.getFolio(), saved.getProcedureType(),
-                saved.getProcedureLabel(), saved.getAddress(), saved.getSolicitanteEmail());
+                saved.getProcedureLabel(), saved.getAddress(), saved.getSolicitanteEmail(), saved.getRejectionReason());
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             /** Cuando el commit terminó, publica cada evento. Si uno falla, lo registra y sigue con el siguiente. */
             @Override

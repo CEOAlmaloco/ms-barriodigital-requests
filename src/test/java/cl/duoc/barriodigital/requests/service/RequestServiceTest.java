@@ -14,6 +14,7 @@ import cl.duoc.barriodigital.requests.persistence.RequestAttachmentRepository;
 import cl.duoc.barriodigital.requests.persistence.RequestActivityRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.AfterEach;
@@ -144,7 +145,7 @@ class RequestServiceTest {
         when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(responsible(stored)));
         when(repository.save(stored)).thenReturn(stored);
         RequestEventPayload expected = new RequestEventPayload(stored.getId(), stored.getFolio(), "nuevo_tipo", "Etiqueta original",
-                "direccion original", "vecino@example.com");
+                "direccion original", "vecino@example.com", null);
 
         requestService.changeStatus("id", target, null,
                 null,
@@ -177,10 +178,10 @@ class RequestServiceTest {
         TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
         ArgumentCaptor<UUID> trace = ArgumentCaptor.forClass(UUID.class);
         verify(publisher).publish(eq(type), eq(stored.getId()),
-                eq(new RequestEventPayload(stored.getId(), stored.getFolio(), "bache", null, "dir", null)), trace.capture());
+                eq(new RequestEventPayload(stored.getId(), stored.getFolio(), "bache", null, "dir", null, null)), trace.capture());
         if (from == RequestStatus.EN_GESTION || from == RequestStatus.EN_TERRENO) {
             verify(publisher).publish(eq(from == RequestStatus.EN_GESTION ? "email.visit" : "certificate.resolved"), eq(stored.getId()),
-                    eq(new RequestEventPayload(stored.getId(), stored.getFolio(), "bache", null, "dir", null)), eq(trace.getValue()));
+                    eq(new RequestEventPayload(stored.getId(), stored.getFolio(), "bache", null, "dir", null, null)), eq(trace.getValue()));
         }
         verifyNoMoreInteractions(publisher);
     }
@@ -198,15 +199,70 @@ class RequestServiceTest {
         verifyNoInteractions(publisher);
     }
 
+    @Test
+    void admitidoAEnGestionNoRegistraEventos() {
+        MunicipalRequest stored = requestWithStatus(RequestStatus.ADMITIDO);
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(responsible(stored)));
+        when(repository.save(stored)).thenReturn(stored);
+        requestService.changeStatus("id", "EN_GESTION", null, null, new CallerContext("func", "Funcionario"));
+        assertTrue(TransactionSynchronizationManager.getSynchronizations().isEmpty());
+        verifyNoInteractions(publisher);
+    }
+
     @ParameterizedTest
-    @CsvSource({"ADMITIDO,EN_GESTION", "INGRESADO,RECHAZADO",
-            "ADMITIDO,RECHAZADO", "EN_GESTION,RECHAZADO", "EN_TERRENO,RECHAZADO"})
-    void otrasTransicionesNoRegistranEventos(RequestStatus from, String target) {
+    @ValueSource(strings = {"INGRESADO", "ADMITIDO", "EN_GESTION", "EN_TERRENO"})
+    void unRechazoPublicaEmailRejectedConElMotivo(RequestStatus from) {
         MunicipalRequest stored = requestWithStatus(from);
         when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(responsible(stored)));
         when(repository.save(stored)).thenReturn(stored);
-        requestService.changeStatus("id", target, "motivo", null, new CallerContext("func", "Funcionario"));
+
+        requestService.changeStatus("id", "RECHAZADO", "  Fuera de la comuna  ", null,
+                new CallerContext("func", "Funcionario"));
+
+        verifyNoInteractions(publisher);
+        TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
+        verify(publisher).publish(eq("email.rejected"), eq(stored.getId()),
+                eq(new RequestEventPayload(stored.getId(), stored.getFolio(), "bache", null, "dir", null,
+                        "Fuera de la comuna")),
+                any(UUID.class));
+        verifyNoMoreInteractions(publisher);
+    }
+
+    @Test
+    void unRechazoDelAdminNoExponeSuMotivoDeIntervencion() throws Exception {
+        MunicipalRequest stored = requestWithStatus(RequestStatus.ADMITIDO);
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(responsible(stored)));
+        when(repository.save(stored)).thenReturn(stored);
+
+        requestService.changeStatus("id", "RECHAZADO", "Duplicado", "Reclamo en la OIRS",
+                new CallerContext("admin-1", "Admin"));
+
+        TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
+        ArgumentCaptor<Object> payload = ArgumentCaptor.forClass(Object.class);
+        verify(publisher).publish(eq("email.rejected"), eq(stored.getId()), payload.capture(), any(UUID.class));
+        String json = new ObjectMapper().writeValueAsString(payload.getValue());
+        assertTrue(json.contains("\"rejectionReason\":\"Duplicado\""), json);
+        assertTrue(!json.contains("interventionReason") && !json.contains("OIRS"), json);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"RESUELTO", "RECHAZADO"})
+    void unRechazoInvalidoNoPublica(RequestStatus from) {
+        assertConflict(from, "RECHAZADO", new CallerContext("func", "Funcionario"));
         assertTrue(TransactionSynchronizationManager.getSynchronizations().isEmpty());
+        verifyNoInteractions(publisher);
+    }
+
+    @Test
+    void unRechazoNoPublicaSiElTitularDesactivoAvisos() {
+        MunicipalRequest stored = requestWithStatus(RequestStatus.INGRESADO);
+        when(repository.findByIdForUpdate("id")).thenReturn(Optional.of(responsible(stored)));
+        when(repository.save(stored)).thenReturn(stored);
+        when(notificationPreferences.isEmailEnabled("oid")).thenReturn(false);
+
+        requestService.changeStatus("id", "RECHAZADO", "Duplicado", null, new CallerContext("func", "Funcionario"));
+
+        TransactionSynchronizationManager.getSynchronizations().forEach(sync -> sync.afterCommit());
         verifyNoInteractions(publisher);
     }
 
@@ -250,7 +306,7 @@ class RequestServiceTest {
                 nullSnapshots ? null : "Etiqueta guardada");
         when(repository.save(any(MunicipalRequest.class))).thenReturn(saved);
         var expected = new RequestEventPayload(saved.getId(), saved.getFolio(), "tipo_guardado", saved.getProcedureLabel(),
-                "direccion guardada", saved.getSolicitanteEmail());
+                "direccion guardada", saved.getSolicitanteEmail(), null);
         MunicipalRequest returned = create(new CreateRequestDto("d", "bache", "otra direccion"),
                 new CallerContext("vecino", "Vecino", "Vecino", "otro@example.com", "Otra etiqueta"));
         assertSame(saved, returned);
