@@ -71,7 +71,7 @@ class EventPublisherTest {
                     "certificate.gen", "certificate.*", "email.dead", "crew.dead", "certificate.dead"));
 
     @ParameterizedTest
-    @ValueSource(strings = {"email.admitted", "email.resolved", "email.visit", "crew.ticket",
+    @ValueSource(strings = {"email.admitted", "email.resolved", "email.visit", "email.rejected", "crew.ticket",
             "certificate.receipt", "certificate.resolved"})
     void elJsonTraeElSobreYElMensajeEsPersistente(String type) throws Exception {
         RabbitTemplate template = mock(RabbitTemplate.class);
@@ -79,7 +79,7 @@ class EventPublisherTest {
 
         publisher.publish(type, "7b6e1d44-2a18-4c90-9f01-88aa11bb22cc",
                 new RequestEventPayload("7b6e1d44-2a18-4c90-9f01-88aa11bb22cc", "BD-2026-000123", "bache", null,
-                        "Los Aromos 120", null));
+                        "Los Aromos 120", null, null));
 
         ArgumentCaptor<Object> body = ArgumentCaptor.forClass(Object.class);
         ArgumentCaptor<MessagePostProcessor> processor = ArgumentCaptor.forClass(MessagePostProcessor.class);
@@ -101,7 +101,8 @@ class EventPublisherTest {
         assertTrue(json.get("traceId").asText().length() > 10);
         assertEquals("7b6e1d44-2a18-4c90-9f01-88aa11bb22cc", json.get("correlationId").asText());
         assertEquals("Los Aromos 120", json.get("payload").get("address").asText());
-        assertEquals(6, json.get("payload").size());
+        assertEquals(7, json.get("payload").size());
+        assertTrue(json.get("payload").get("rejectionReason").isNull());
         assertEquals("BD-2026-000123", json.get("payload").get("folio").asText());
         assertTrue(json.get("payload").get("procedureLabel").isNull());
         assertTrue(json.get("payload").get("solicitanteEmail").isNull());
@@ -137,7 +138,7 @@ class EventPublisherTest {
         List<Runnable> tasks = new ArrayList<>();
         EventPublisher publisher = new EventPublisher(template, configuredNames, mapper, tasks::add);
         UUID trace = UUID.randomUUID();
-        var payload = new RequestEventPayload("tramite", null, "tipo_nuevo", "Etiqueta guardada", "Direccion guardada", null);
+        var payload = new RequestEventPayload("tramite", null, "tipo_nuevo", "Etiqueta guardada", "Direccion guardada", null, null);
         publisher.publish(firstType, "tramite", payload, trace);
         publisher.publish(secondType, "tramite", payload, trace);
         assertEquals(2, tasks.size());

@@ -225,17 +225,18 @@ class RequestStatusEventsHttpTest {
     }
 
     @Test
-    void converterDeLaAplicacionIncluyeLosSeisCamposYNulos() throws Exception {
-        var payload = new RequestEventPayload("id", "BD-2026-000123", "bache", null, "dir", null);
+    void converterDeLaAplicacionIncluyeLosSieteCamposYNulos() throws Exception {
+        var payload = new RequestEventPayload("id", "BD-2026-000123", "bache", null, "dir", null, null);
         var message = converter.toMessage(payload, new org.springframework.amqp.core.MessageProperties());
         var json = mapper.readTree(message.getBody());
-        assertEquals(6, json.size());
+        assertEquals(7, json.size());
         assertEquals("id", json.get("requestId").textValue());
         assertEquals("BD-2026-000123", json.get("folio").textValue());
         assertEquals("bache", json.get("procedureType").textValue());
         assertEquals("dir", json.get("address").textValue());
         assertTrue(json.get("procedureLabel").isNull());
         assertTrue(json.get("solicitanteEmail").isNull());
+        assertTrue(json.get("rejectionReason").isNull());
     }
 
     private MunicipalRequest create(RequestStatus status) {
