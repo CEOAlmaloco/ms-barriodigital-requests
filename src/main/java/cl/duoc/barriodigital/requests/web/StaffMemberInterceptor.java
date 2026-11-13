@@ -13,12 +13,14 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Map;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Registra al personal en staff_member en cada llamada de staff, antes del caso de uso (contrato EP3-05, sección 5.1).
  * Solo cuenta una llamada con X-User-Id y exactamente un rol de staff: el Vecino no se registra.
  * Un caché en memoria escribe a lo más una vez cada 15 minutos por oid, salvo que cambie el nombre o el rol.
+ * Una llamada sin X-User-Name legible no cambia el nombre: StaffMemberService conserva el guardado.
  * Un fallo del registro no bloquea la llamada: se deja en el log y la llamada sigue.
  */
 @Component
@@ -49,13 +51,14 @@ public class StaffMemberInterceptor implements HandlerInterceptor {
         }
         String oid = caller.userId().trim();
         // El nombre llega codificado en URL (EP3-09) y se guarda decodificado, igual que actor_name.
-        Seen now = new Seen(RequestService.snapshotName(caller.userName(), oid), caller.role(), clock.instant());
+        String name = RequestService.headerName(caller.userName());
         Seen previous = lastSeen.get(oid);
+        Seen now = new Seen(name != null || previous == null ? name : previous.name(), caller.role(), clock.instant());
         if (previous != null && previous.sameAs(now) && now.at().isBefore(previous.at().plus(REFRESH))) {
             return true;
         }
         try {
-            staff.touch(oid, now.name(), now.role());
+            staff.touch(oid, name, now.role());
             lastSeen.put(oid, now);
         } catch (RuntimeException ex) {
             log.warn("No se pudo registrar al personal en staff_member error={}", ex.getClass().getSimpleName());
@@ -63,10 +66,10 @@ public class StaffMemberInterceptor implements HandlerInterceptor {
         return true;
     }
 
-    /** Lo último que se escribió de un oid. */
+    /** Lo último que se escribió de un oid. {@code name} es null si todavía no llegó ninguno legible. */
     private record Seen(String name, String role, Instant at) {
         boolean sameAs(Seen other) {
-            return name.equals(other.name) && role.equals(other.role);
+            return Objects.equals(name, other.name) && role.equals(other.role);
         }
     }
 }

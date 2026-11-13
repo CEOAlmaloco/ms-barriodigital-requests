@@ -61,6 +61,41 @@ class StaffMemberServiceTest {
         assertEquals(NOW, existing.getLastSeenAt());
     }
 
+    @Test
+    void unaLlamadaSinNombreConservaElNombreGuardadoYActualizaRolYUltimaVez() {
+        StaffMember existing = new StaffMember("oid-1", "Ana María", "Funcionario",
+                Instant.parse("2026-11-01T12:00:00Z"));
+        when(staff.findById("oid-1")).thenReturn(Optional.of(existing));
+
+        service.touch("oid-1", null, "Admin");
+
+        assertEquals("Ana María", existing.getName());
+        assertEquals("Admin", existing.getRole());
+        assertEquals(NOW, existing.getLastSeenAt());
+    }
+
+    @Test
+    void unaFilaNuevaSinNombreUsaElOidHastaQueLlegueElNombre() {
+        when(staff.findById("oid-1")).thenReturn(Optional.empty());
+
+        service.touch("oid-1", null, "Funcionario");
+
+        ArgumentCaptor<StaffMember> saved = ArgumentCaptor.forClass(StaffMember.class);
+        verify(staff).save(saved.capture());
+        assertEquals("oid-1", saved.getValue().getName());
+    }
+
+    @Test
+    void elNombreRealReemplazaAlOidProvisorio() {
+        StaffMember existing = new StaffMember("oid-1", "oid-1", "Funcionario",
+                Instant.parse("2026-11-01T12:00:00Z"));
+        when(staff.findById("oid-1")).thenReturn(Optional.of(existing));
+
+        service.touch("oid-1", "Ana María", "Funcionario");
+
+        assertEquals("Ana María", existing.getName());
+    }
+
     @ParameterizedTest
     @ValueSource(strings = {"Funcionario", "Admin"})
     void laListaDeFuncionariosEntregaSoloIdYNombre(String role) {

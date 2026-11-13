@@ -265,6 +265,10 @@ La plataforma no consulta el directorio de Entra ID. Un `HandlerInterceptor` reg
 una vez cada 15 minutos por `oid`, salvo que cambie el nombre o el rol. Un fallo del registro queda en el log y no
 bloquea la llamada. Los vecinos no se registran. Un Funcionario aparece en la lista desde su primera llamada.
 
+El BFF reenvía `X-User-Name` en todas las llamadas. Si una llamada no lo trae, o viene vacío o ilegible, se conserva
+el nombre guardado: una llamada sin nombre nunca pisa uno válido. Una fila nueva sin nombre usa el `oid` hasta la
+primera llamada que lo traiga.
+
 **Historial**
 
 Cada toma, asignación o reasignación agrega una fila `ASIGNACION` `INTERNO` ("Tomó el trámite", "Asignó a…",
@@ -288,9 +292,21 @@ Oracle con ORA-02290. Corre **una vez**, antes de que alguien tome o asigne un t
 
 Una base nueva no lo necesita: Hibernate crea la tabla con las cuatro marcas y con el `CHECK` del actor.
 
-**Transición hasta EP3-45 y EP3-47:** el BFF todavía no expone `take`, `assignee` ni `assignees`, y sigue aceptando
-solo al Funcionario en el cambio de estado. Hasta esas issues, nadie puede tomar ni operar un trámite desde la
-pantalla, y un 403 del no responsable en la admisión no libera el cupo reservado. No se despliega antes de EP3-45.
+### Reparación de nombres: `repair-assignee-names.sql`
+
+Antes de que el BFF reenviara el nombre en las lecturas, `staff_member` podía quedar con el `oid` como nombre, y asignar
+copiaba ese valor a `municipal_requests.assignee_name` y al historial. Los nombres son snapshots: el código corregido
+no arregla los ya guardados. El script corrige solo los que son iguales a su id y cuya fila en `staff_member` ya
+tiene un nombre válido (no vacío y distinto del `oid`). No toca `outbox_events`: los eventos emitidos son historia.
+
+1. **Desplegar** este cambio y el del BFF que reenvía `X-User-Name`.
+2. **Esperar** a que cada funcionario afectado vuelva a entrar: su primera llamada deja su nombre en `staff_member`.
+3. **Revisar la vista previa** del script: las filas que se van a reparar, con el nombre nuevo, y los `oid` que
+   todavía no tienen nombre (esos se saltan).
+4. **Correr el script** con SQLcl, SQL*Plus o el worksheet de SQL Developer ("Ejecutar script"). Hace `COMMIT` al
+   final y se puede repetir: lo reparado deja de cumplir la condición.
+5. **Revisar la comprobación final**: los pendientes son solo los `oid` sin nombre todavía. Volver al paso 2 para ellos.
+6. **Reparar report** con su propio `repair-assignee-names.sql`, que corrige la proyección de plazos.
 
 ## Listado paginado (EP3-30)
 
@@ -338,11 +354,6 @@ tiene un solo componente de tabla. Los filtros se combinan por un Y lógico, y u
    bien. Si crece, el paso es Oracle Text.
 3. **`status` acepta un solo valor**, como antes de EP3-30. Aceptar varios separados por coma, como en report, es
    una mejora futura.
-
-**Transición hasta EP3-45 y EP3-48:** antes el listado era un arreglo y ahora es una página. Este cambio se mergea
-junto con el primer commit de EP3-45, en el que el BFF deja pasar la página. Hasta EP3-48, el frontend usa un
-adaptador temporal que pide `size=50` y lee `content`. Mientras tanto, con más de 50 trámites el listado se ve
-incompleto.
 
 ## Eventos de Kafka: outbox (EP3-31)
 

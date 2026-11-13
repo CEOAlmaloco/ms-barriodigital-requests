@@ -31,6 +31,8 @@ public class StaffMemberService {
 
     /**
      * Crea o actualiza la fila de quien llama, en su propia transacción y antes del caso de uso.
+     * {@code name} es null cuando la llamada no trae un X-User-Name legible: se conserva el nombre guardado, y una
+     * fila nueva usa el oid hasta la primera llamada con nombre. Así una llamada sin nombre nunca pisa uno válido.
      * No captura excepciones: si dos primeras llamadas del mismo oid chocan en la PK, el error lo registra
      * el interceptor y la próxima llamada actualiza la fila. No reintenta.
      */
@@ -38,9 +40,10 @@ public class StaffMemberService {
     public void touch(String oid, String name, String role) {
         Optional<StaffMember> found = staff.findById(oid);
         if (found.isPresent()) {
-            found.get().seen(name, role, clock.instant());
+            StaffMember member = found.get();
+            member.seen(name != null ? name : member.getName(), role, clock.instant());
         } else {
-            staff.save(new StaffMember(oid, name, role, clock.instant()));
+            staff.save(new StaffMember(oid, name != null ? name : oid, role, clock.instant()));
         }
     }
 

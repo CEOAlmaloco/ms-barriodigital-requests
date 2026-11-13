@@ -588,12 +588,17 @@ public class RequestService {
      * No supera 200 caracteres.
      */
     public static String snapshotName(String headerName, String solicitanteId) {
-        String fromHeader = truncate(decodeHeader(headerName), NAME_MAX);
+        String fromHeader = headerName(headerName);
         if (fromHeader != null) {
             return fromHeader;
         }
         String fromId = blankToNull(solicitanteId);
         return fromId != null ? fromId : "Sin nombre";
+    }
+
+    /** Nombre de X-User-Name decodificado y recortado, o null si no viene o no es legible. */
+    public static String headerName(String headerName) {
+        return truncate(decodeHeader(headerName), NAME_MAX);
     }
 
     /**

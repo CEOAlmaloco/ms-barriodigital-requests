@@ -17,6 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -77,11 +78,49 @@ class StaffMemberInterceptorTest {
         verify(staff, times(2)).touch("oid-1", "Ana", "Funcionario");
     }
 
+    @Test
+    void unaLlamadaSinNombreRegistraSinNombreYNoUsaElOidComoNombre() {
+        call("oid-1", "Funcionario", null);
+
+        verify(staff).touch("oid-1", null, "Funcionario");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "%E0%A4%A", "Ana%0AFalsa"})
+    void unNombreVacioOIlegibleCuentaComoAusente(String header) {
+        call("oid-1", "Funcionario", header);
+
+        verify(staff).touch("oid-1", null, "Funcionario");
+    }
+
+    @Test
+    void unaLecturaSinNombreNoVuelveAEscribirNiPisaElNombreConocido() {
+        call("oid-1", "Funcionario", "Ana");
+        call("oid-1", "Funcionario", null);
+        clock.plusMinutes(15);
+        call("oid-1", "Funcionario", null);
+
+        verify(staff, times(1)).touch("oid-1", "Ana", "Funcionario");
+        verify(staff, times(1)).touch("oid-1", null, "Funcionario");
+        verify(staff, never()).touch("oid-1", "oid-1", "Funcionario");
+    }
+
+    @Test
+    void elNombreLlegaDespuesDeUnaLlamadaSinNombreYSeEscribeAlInstante() {
+        call("oid-1", "Funcionario", null);
+        call("oid-1", "Funcionario", "Ana");
+
+        verify(staff).touch("oid-1", null, "Funcionario");
+        verify(staff).touch("oid-1", "Ana", "Funcionario");
+    }
+
     private boolean call(String oid, String roles, String name) {
         MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/requests");
         request.addHeader(CallerContext.HEADER_USER_ID, oid);
         request.addHeader(CallerContext.HEADER_USER_ROLES, roles);
-        request.addHeader(CallerContext.HEADER_USER_NAME, name);
+        if (name != null) {
+            request.addHeader(CallerContext.HEADER_USER_NAME, name);
+        }
         return interceptor.preHandle(request, new MockHttpServletResponse(), new Object());
     }
 
