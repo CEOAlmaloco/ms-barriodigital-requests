@@ -92,6 +92,47 @@
       }
     },
     {
+      "name": "Exportar CSV (Funcionario, abiertos sin responsable; EP3-63)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-User-Id", "value": "oid-func-prueba" },
+          { "key": "X-User-Roles", "value": "Funcionario" }
+        ],
+        "url": {
+          "raw": "http://localhost:8081/api/requests/export?open=true&assignee=none",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "requests", "export"],
+          "query": [
+            { "key": "open", "value": "true" },
+            { "key": "assignee", "value": "none" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Exportar CSV (Vecino, solo los suyos; EP3-63)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-User-Id", "value": "oid-vecino-prueba" },
+          { "key": "X-User-Roles", "value": "Vecino" }
+        ],
+        "url": {
+          "raw": "http://localhost:8081/api/requests/export?open=true",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "requests", "export"],
+          "query": [
+            { "key": "open", "value": "true" }
+          ]
+        }
+      }
+    },
+    {
       "name": "Obtener por id",
       "request": {
         "method": "GET",

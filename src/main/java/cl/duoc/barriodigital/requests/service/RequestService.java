@@ -216,6 +216,24 @@ public class RequestService {
      */
     @Transactional(readOnly = true)
     public Page<MunicipalRequest> list(RequestListQuery params, CallerContext caller) {
+        Specification<MunicipalRequest> filters = listFilters(params, caller);
+        PageRequest pageable = pageRequest(params.page(), params.size());
+        Specification<MunicipalRequest> spec = filters.and(parseSort(params.sort()));
+        // Spring no acepta un offset mayor que un int. Esa página está fuera de rango: vacía, con el total real.
+        if (pageable.getOffset() > Integer.MAX_VALUE) {
+            return new PageImpl<>(List.of(), pageable, repository.count(spec));
+        }
+        return repository.findAll(spec, pageable);
+    }
+
+    /** Filtros, visibilidad y orden del listado sin paginar, para la exportación CSV (EP3-63). */
+    Specification<MunicipalRequest> exportSpecification(RequestListQuery params, CallerContext caller) {
+        Specification<MunicipalRequest> filters = listFilters(params, caller);
+        return filters.and(parseSort(params.sort()));
+    }
+
+    /** Valida los filtros y los combina con el de titular, que el Vecino no puede evitar. */
+    private Specification<MunicipalRequest> listFilters(RequestListQuery params, CallerContext caller) {
         requireUserId(caller);
         String assigneeId = null;
         boolean unassigned = false;
@@ -236,15 +254,13 @@ public class RequestService {
         Boolean open = parseOpen(params.open());
         String text = parseSearchText(params.q());
         String sector = parseSector(params.sector());
-        PageRequest pageable = pageRequest(params.page(), params.size());
-        Specification<MunicipalRequest> order = parseSort(params.sort());
 
         Instant fromInstant = params.from() == null ? null : startOfCivilDay(params.from());
         // Inicio del día siguiente, sin incluirlo: cubre el día entero, con microsegundos y cambios de hora.
         Instant beforeInstant = params.to() == null ? null : startOfCivilDay(params.to().plusDays(1));
         String ownerFilter = caller.mustFilterOwnRequests() ? caller.userId().trim() : null;
 
-        Specification<MunicipalRequest> spec = Specification.where(ownedBy(ownerFilter))
+        return Specification.where(ownedBy(ownerFilter))
                 .and(statusIs(params.status()))
                 .and(open(open))
                 .and(createdFrom(fromInstant))
@@ -253,13 +269,7 @@ public class RequestService {
                 .and(unassigned(unassigned))
                 .and(procedureTypeIs(ProcedureTypes.normalize(blankToNull(params.procedureType()))))
                 .and(sectorIs(sector))
-                .and(matches(text))
-                .and(order);
-        // Spring no acepta un offset mayor que un int. Esa página está fuera de rango: vacía, con el total real.
-        if (pageable.getOffset() > Integer.MAX_VALUE) {
-            return new PageImpl<>(List.of(), pageable, repository.count(spec));
-        }
-        return repository.findAll(spec, pageable);
+                .and(matches(text));
     }
 
     /** open acepta solo true o false. */
