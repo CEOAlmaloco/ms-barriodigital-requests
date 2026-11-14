@@ -97,7 +97,8 @@ Transiciones válidas: `GET /api/requests/meta/transitions`
 (mapa estado → siguientes del PUT `/status`; `RESUELTO`, `RECHAZADO` y `CANCELADO` vienen con lista vacía. La cancelación del titular es `POST /api/requests/{id}/cancel`, EP3-76)
 
 El listado `GET /api/requests` responde **por página**, con filtros, orden y búsqueda. Ver
-[Listado paginado](#listado-paginado-ep3-30).
+[Listado paginado](#listado-paginado-ep3-30). `GET /api/requests/export` descarga ese mismo listado en CSV, ver
+[Exportación CSV](#exportación-csv-ep3-63).
 Vecino: el servidor fuerza `solicitanteId = X-User-Id`. Funcionario/Admin/Auditor: ven todos.
 Las respuestas salen como `RequestView`, armado según el rol: la entidad nunca se serializa. El Auditor recibe
 `solicitanteEmail` en `null`.
@@ -118,6 +119,11 @@ curl -X POST http://localhost:8081/api/requests `
 curl "http://localhost:8081/api/requests?open=true&from=2026-09-01&to=2026-09-30&q=bache&page=1&size=10" `
   -H "X-User-Id: oid-de-prueba" `
   -H "X-User-Roles: Vecino"
+
+# Exportar a CSV los abiertos sin responsable (staff; el Vecino exporta solo los suyos)
+curl "http://localhost:8081/api/requests/export?open=true&assignee=none" -o tramites.csv `
+  -H "X-User-Id: oid-func-prueba" `
+  -H "X-User-Roles: Funcionario"
 
 # Por id
 curl http://localhost:8081/api/requests/<id> `
@@ -354,6 +360,45 @@ tiene un solo componente de tabla. Los filtros se combinan por un Y lógico, y u
    bien. Si crece, el paso es Oracle Text.
 3. **`status` acepta un solo valor**, como antes de EP3-30. Aceptar varios separados por coma, como en report, es
    una mejora futura.
+
+## Exportación CSV (EP3-63)
+
+`GET /api/requests/export` entrega el listado completo en CSV, sin paginar. Acepta los mismos filtros y el mismo
+`sort` que `GET /api/requests`, con las mismas reglas y los mismos 400 y 403. `page` y `size` se ignoran. El contrato
+está en `barriodigital-infra/docs/decisiones.md`, "Contrato: exportación CSV del listado (EP3-63)".
+
+- **Roles:** los cuatro. El Vecino exporta solo sus trámites, también al buscar o filtrar, y recibe 403 si usa
+  `assignee`. Cada fila sale de `RequestView`, con la misma proyección por rol del listado: el Vecino no recibe al
+  responsable y el Auditor no recibe el correo del solicitante.
+- **Tope de 5000 trámites.** Si el resultado lo supera, responde 400
+  `La exportacion supera 5000 tramites. Agrega filtros`, sin filas. Un CSV recortado se leería como completo.
+- **Instantánea:** es un solo `SELECT` que se recorre por lotes de 500. El conteo para el tope y las filas salen de la
+  misma lectura, así que una escritura concurrente no repite ni omite trámites. Paginar con varias consultas sí lo
+  haría.
+- **Formato:** `text/csv; charset=UTF-8` con BOM, separador `;` y fin de línea CRLF, como lo abre Excel en
+  configuración chilena. Todas las celdas van entre comillas. Fechas `yyyy-MM-dd HH:mm` en `America/Santiago`.
+  Descarga `tramites-AAAA-MM-DD.csv`, con el día de Chile, y `Cache-Control: private, no-store`.
+- **Fórmulas:** una celda cuyo primer carácter visible es `=`, `+`, `-` o `@` (también de ancho completo), o que
+  empieza con un carácter de control o invisible, lleva `'` adelante. Así Excel la muestra como texto y no la ejecuta
+  (CSV injection).
+
+| Columna | Origen |
+|---|---|
+| Folio, Estado, Tipo, Título, Dirección, Sector | `folio`, `status`, `procedureLabel` (o el código), `title`, `address` y el nombre del sector |
+| Ingreso, Última actualización | `createdAt`, `updatedAt` |
+| Plazo (días hábiles), En atención | `slaBusinessDays`, `hasAssignee` como `Sí` o `No` |
+| Responsable | `assigneeName`. Vacío para el Vecino |
+| Solicitante, Correo solicitante | `solicitanteNombre`, `solicitanteEmail`. El correo, vacío para el Auditor |
+| Motivo de rechazo | `rejectionReason`, que también ve el Vecino |
+
+No lleva la descripción, la ubicación, la encuesta ni ids internos: el CSV es para gestión y no copia más datos
+personales que los necesarios.
+
+**Límites conocidos**
+
+1. **Sobre 5000 trámites** hay que exportar por partes, con filtros de fecha o estado.
+2. **Excel con configuración en inglés** espera coma como separador: hay que importar el archivo indicando `;`.
+3. **Sin registro de auditoría:** la exportación no deja evento en `audit.timeline`.
 
 ## Eventos de Kafka: outbox (EP3-31)
 
