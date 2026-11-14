@@ -156,6 +156,14 @@ curl -X POST http://localhost:8081/api/requests/<id>/rating `
   -H "X-User-Roles: Vecino" `
   -H "X-User-Name: Alex%20Ampuero" `
   -d "{\"score\":5,\"comment\":\"Rapido\"}"
+
+# Comentar con foto (solo el Vecino titular, en un trámite abierto; EP3-64)
+curl -X POST http://localhost:8081/api/requests/<id>/comments `
+  -H "X-User-Id: oid-de-prueba" `
+  -H "X-User-Roles: Vecino" `
+  -H "X-User-Name: Alex%20Ampuero" `
+  -F "comment={\"text\":\"Ahora se acumula agua\"};type=application/json" `
+  -F "attachment=@foto.jpg;type=image/jpeg"
 ```
 
 Si la tabla ya tenía filas viejas sin `address`/`solicitante_id`, vaciala una vez en SQL:  
@@ -171,6 +179,29 @@ Para evidenciar en Oracle:
 El alta acepta una única imagen opcional mediante `multipart/form-data`: la parte `request` contiene el mismo JSON descrito arriba y la parte `attachment` contiene la imagen. Se permiten JPEG y PNG; la interfaz también acepta WebP y lo convierte a PNG antes de enviarlo. El servicio verifica y decodifica los bytes (no confía en el nombre ni en el MIME declarado), limita el archivo a 5 MB y a 6000 px por lado/12 MP, y vuelve a codificarlo para quitar metadatos. SVG y otros formatos no se aceptan.
 
 Los bytes normalizados se guardan como BLOB en `municipal_request_attachments`, separados de los listados; `hasAttachment` solo indica si hay una imagen. `GET /api/requests/{id}/attachment` entrega la imagen al titular o a Funcionario/Admin/Auditor, y oculta con 404 los trámites ajenos. El BFF aplica autenticación JWT y es el único acceso público; el servicio requests no debe exponerse directamente.
+
+## Comentario y fotos del vecino (EP3-64)
+
+Reglas, errores y evento en el contrato EP3-64 de `barriodigital-infra/docs/decisiones.md`.
+
+- `POST /api/requests/{id}/comments`: JSON `{ "text": "..." }`, o `multipart/form-data` con la parte `comment` y la
+  parte opcional `attachment`, que se valida como la imagen del alta. Responde 201 con el `ActividadView`.
+- `GET /api/requests/{id}/comments/{commentId}/attachment`: la foto, con las reglas de acceso de `/attachment`.
+
+### Antes de desplegar: `citizen-comment.sql`
+
+Sin el script, el primer comentario falla con ORA-02290. Orden de despliegue:
+
+1. **Correr** `src/main/resources/db/citizen-comment.sql` una vez, con SQLcl, SQL*Plus o el worksheet de SQL
+   Developer ("Ejecutar script"). Se puede volver a correr, también tras una ejecución interrumpida: crea lo que
+   falta y se detiene, sin tocarla, ante una restricción con el nombre esperado y otra definición.
+2. **Revisar la comprobación final:** las seis restricciones `ENABLED` y `VALIDATED`, un solo `CHECK` de `kind` y
+   `has_attachment` con default 0.
+3. **Desplegar audit y report** con soporte para `request.citizen-comment`. Si requests se adelanta, los dos lo
+   descartan con un WARN y ese evento no se puede reprocesar.
+4. **Desplegar requests.**
+
+En los tests, `src/test/resources/db/h2-citizen-comment.sql` crea la UNIQUE y la FK compuesta en H2.
 
 ## Docker (EP1-24)
 
@@ -413,6 +444,7 @@ EP3-32 (sección siguiente).
 | Alta | `request.created` | `certificate.receipt` |
 | Cambio de estado | `request.status-changed` | Los de la sección de eventos, según la transición |
 | Gestión de contacto | `request.contact-logged` | Ninguno |
+| Comentario del titular | `request.citizen-comment` | Ninguno |
 | Toma, asignación o reasignación | `request.assigned` | Ninguno |
 
 - `DomainEventRecorder` (paquete `messaging`) arma el sobre de EP3-01 desde la fila del expediente: mismo instante,
@@ -428,7 +460,7 @@ EP3-32 (sección siguiente).
   sin actor y las filas anteriores a EP3-31 quedan en `null`. `/actividad` lo entrega como `actorRole` solo al staff;
   el Vecino lo recibe `null`, también en sus propias marcas (EP3-04, sección 6.2).
 - **Instantes:** Oracle y H2 guardan microsegundos y redondean el resto. Los instantes del alta, el cambio de estado,
-  la gestión y la asignación se truncan a microsegundos al nacer (`StoredInstant`), así el `occurredAt` del evento
+  la gestión, la asignación y el comentario se truncan a microsegundos al nacer (`StoredInstant`), así el `occurredAt` del evento
   es exactamente el `occurred_at` de la marca.
 
 ### Antes de desplegar: `outbox-events.sql`

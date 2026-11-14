@@ -36,6 +36,7 @@ public class DomainEventRecorder {
     public static final String REQUEST_CONTACT_LOGGED = "request.contact-logged";
     public static final String REQUEST_ASSIGNED = "request.assigned";
     public static final String REQUEST_RATED = "request.rated";
+    public static final String REQUEST_CITIZEN_COMMENT = "request.citizen-comment";
 
     static final String PRODUCER = "requests";
     static final int SCHEMA_VERSION = 1;
@@ -56,7 +57,7 @@ public class DomainEventRecorder {
     }
 
     /**
-     * Registra el evento que corresponde a la fila del expediente: CREADO, ESTADO, GESTION, CALIFICACION o la marca
+     * Registra el evento que corresponde a la fila del expediente: CREADO, ESTADO, GESTION, CALIFICACION, COMENTARIO o la marca
      * interna de ASIGNACION. El hito público de asignación no genera evento (EP3-05, sección 7): una asignación es un evento.
      * traceId es el mismo de los comandos de RabbitMQ del cambio.
      */
@@ -102,6 +103,10 @@ public class DomainEventRecorder {
                 payload = new DomainEvent.Rated(request.getId(), request.getFolio(),
                         Objects.requireNonNull(request.getSatisfactionScore(), "satisfactionScore"),
                         request.getSatisfactionComment());
+            }
+            case COMENTARIO -> {
+                type = REQUEST_CITIZEN_COMMENT;
+                payload = new DomainEvent.CitizenComment(request.getId(), request.getFolio(), row.isHasAttachment());
             }
             default -> throw new IllegalArgumentException("Marca sin evento: " + row.getKind());
         }

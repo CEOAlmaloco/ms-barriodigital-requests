@@ -17,6 +17,7 @@ import cl.duoc.barriodigital.requests.web.dto.ActividadView;
 import cl.duoc.barriodigital.requests.web.dto.AssignRequestDto;
 import cl.duoc.barriodigital.requests.web.dto.AssigneeView;
 import cl.duoc.barriodigital.requests.web.dto.ChangeStatusDto;
+import cl.duoc.barriodigital.requests.web.dto.CitizenCommentDto;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import cl.duoc.barriodigital.requests.web.dto.NotificationPreferenceDto;
 import cl.duoc.barriodigital.requests.web.dto.PageView;
@@ -124,7 +125,21 @@ public class RequestController {
             @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
             @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles
     ) {
-        RequestAttachmentContent attachment = requestService.getAttachment(id, new CallerContext(userId, roles));
+        return imageResponse(requestService.getAttachment(id, new CallerContext(userId, roles)));
+    }
+
+    /** Mismas reglas de acceso y headers que la imagen del alta. */
+    @GetMapping("/{id}/comments/{commentId}/attachment")
+    public ResponseEntity<byte[]> getCommentAttachment(
+            @PathVariable String id,
+            @PathVariable String commentId,
+            @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
+            @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles
+    ) {
+        return imageResponse(activityService.getCommentAttachment(id, commentId, new CallerContext(userId, roles)));
+    }
+
+    private static ResponseEntity<byte[]> imageResponse(RequestAttachmentContent attachment) {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(attachment.contentType()))
                 .contentLength(attachment.content().length)
@@ -176,6 +191,35 @@ public class RequestController {
     ) {
         CallerContext caller = new CallerContext(userId, roles, userName);
         return RequestView.of(requestService.rate(id, body.score(), body.comment(), caller), caller);
+    }
+
+    @PostMapping(value = "/{id}/comments", consumes = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<ActividadView> comment(
+            @PathVariable String id,
+            @RequestBody CitizenCommentDto body,
+            @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
+            @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles,
+            @RequestHeader(value = CallerContext.HEADER_USER_NAME, required = false) String userName
+    ) {
+        CallerContext caller = new CallerContext(userId, roles, userName);
+        ActividadView view = activityService.comment(id, body.text(), null, caller);
+        return ResponseEntity.status(HttpStatus.CREATED).body(view);
+    }
+
+    /** La imagen se valida antes que el resto, como en el alta. */
+    @PostMapping(value = "/{id}/comments", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<ActividadView> commentWithAttachment(
+            @PathVariable String id,
+            @RequestPart("comment") CitizenCommentDto body,
+            @RequestPart(value = "attachment", required = false) MultipartFile attachment,
+            @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
+            @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles,
+            @RequestHeader(value = CallerContext.HEADER_USER_NAME, required = false) String userName
+    ) {
+        var image = attachment == null ? null : imageSanitizer.sanitize(attachment);
+        CallerContext caller = new CallerContext(userId, roles, userName);
+        ActividadView view = activityService.comment(id, body.text(), image, caller);
+        return ResponseEntity.status(HttpStatus.CREATED).body(view);
     }
 
     /** Historial, gestiones visibles según el rol y los tiempos que sí se pueden calcular. */

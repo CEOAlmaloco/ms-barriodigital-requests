@@ -83,13 +83,33 @@ CREATE TABLE request_activity (
     assignee_name          VARCHAR2(200),
     previous_assignee_id   VARCHAR2(64),
     previous_assignee_name VARCHAR2(200),
-    CONSTRAINT ck_request_activity_kind CHECK (kind IN ('CREADO', 'ESTADO', 'GESTION', 'ASIGNACION', 'CALIFICACION')),
+    has_attachment         NUMBER(1) DEFAULT 0 NOT NULL,
+    CONSTRAINT ck_request_activity_kind
+        CHECK (kind IN ('CREADO', 'ESTADO', 'GESTION', 'ASIGNACION', 'CALIFICACION', 'COMENTARIO')),
+    CONSTRAINT ck_request_activity_has_attachment CHECK (has_attachment IN (0, 1)),
+    -- Destino de la FK compuesta de request_activity_attachments.
+    CONSTRAINT uk_request_activity_request UNIQUE (id, request_id),
     -- Solo el hito público de asignación va sin actor (EP3-05). Las bases existentes usan assignment-request-activity.sql.
     CONSTRAINT ck_request_activity_actor
         CHECK (actor_id IS NOT NULL OR (kind = 'ASIGNACION' AND visibility = 'PUBLICO'))
 );
 
 CREATE INDEX idx_request_activity_request ON request_activity (request_id);
+
+-- Fotos de comentarios del titular. Las bases existentes usan citizen-comment.sql.
+-- La FK compuesta impide guardar la imagen con un trámite distinto al de su comentario.
+CREATE TABLE request_activity_attachments (
+    activity_id     VARCHAR2(36)  NOT NULL,
+    request_id      VARCHAR2(36)  NOT NULL,
+    attachment_data BLOB          NOT NULL,
+    content_type    VARCHAR2(30)  NOT NULL,
+    file_name       VARCHAR2(40)  NOT NULL,
+    created_at      TIMESTAMP WITH TIME ZONE NOT NULL,
+    CONSTRAINT pk_request_activity_attachments PRIMARY KEY (activity_id),
+    CONSTRAINT ck_request_activity_attachment_type CHECK (content_type IN ('image/jpeg', 'image/png')),
+    CONSTRAINT fk_request_activity_attachment_comment
+        FOREIGN KEY (activity_id, request_id) REFERENCES request_activity (id, request_id)
+);
 
 -- Outbox de eventos Kafka (EP3-02, sección 2.1). La crea db/outbox-events.sql antes del primer arranque:
 -- Hibernate no sabe crear el identity con ORDER.

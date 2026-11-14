@@ -99,4 +99,12 @@ public record DomainEvent(
             String comment
     ) {
     }
+
+    /** request.citizen-comment (EP3-64). Sin el texto ni la imagen (EP3-01, sección 8). */
+    public record CitizenComment(
+            String requestId,
+            String folio,
+            boolean hasAttachment
+    ) {
+    }
 }

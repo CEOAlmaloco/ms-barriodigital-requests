@@ -4,10 +4,12 @@ import cl.duoc.barriodigital.requests.domain.ActivityKind;
 import cl.duoc.barriodigital.requests.domain.ActivityVisibility;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
 import cl.duoc.barriodigital.requests.domain.RequestActivity;
+import cl.duoc.barriodigital.requests.domain.RequestActivityAttachment;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.domain.StoredInstant;
 import cl.duoc.barriodigital.requests.messaging.DomainEventRecorder;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
+import cl.duoc.barriodigital.requests.persistence.RequestActivityAttachmentRepository;
 import cl.duoc.barriodigital.requests.persistence.RequestActivityRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
 import cl.duoc.barriodigital.requests.web.dto.ActividadView;
@@ -41,6 +43,9 @@ public class RequestActivityService {
     private static final Set<RequestStatus> TERMINAL = EnumSet.of(
             RequestStatus.RESUELTO, RequestStatus.RECHAZADO, RequestStatus.CANCELADO);
 
+    static final int MAX_COMMENTS = 20;
+    static final int MAX_COMMENT_LENGTH = 500;
+
     /** Nombre con que el Vecino ve a quien actuó por la municipalidad (EP3-04, sección 6.2). */
     static final String MUNICIPALIDAD = "Municipalidad";
 
@@ -54,15 +59,18 @@ public class RequestActivityService {
     private final MunicipalRequestRepository requests;
     private final RequestActivityRepository activity;
     private final DomainEventRecorder events;
+    private final RequestActivityAttachmentRepository commentAttachments;
 
     public RequestActivityService(
             MunicipalRequestRepository requests,
             RequestActivityRepository activity,
-            DomainEventRecorder events
+            DomainEventRecorder events,
+            RequestActivityAttachmentRepository commentAttachments
     ) {
         this.requests = requests;
         this.activity = activity;
         this.events = events;
+        this.commentAttachments = commentAttachments;
     }
 
     /**
@@ -108,6 +116,79 @@ public class RequestActivityService {
         // Sin comandos de RabbitMQ: el traceId identifica solo esta gestión.
         events.record(request, gestion, UUID.randomUUID());
         return build(request, caller, true);
+    }
+
+    /**
+     * Orden de errores del contrato EP3-64, sección 4. El estado y el tope se revisan con la fila bloqueada:
+     * dos comentarios simultáneos se cuentan uno después del otro.
+     */
+    @Transactional
+    public ActividadView comment(
+            String requestId,
+            String text,
+            ImageAttachmentSanitizer.SanitizedImage image,
+            CallerContext caller
+    ) {
+        requireUser(caller);
+        if (!caller.isVecino()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo el Vecino titular puede comentar el tramite");
+        }
+        String cleaned = text == null ? "" : text.trim();
+        if (cleaned.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "text es obligatorio");
+        }
+        if (cleaned.length() > MAX_COMMENT_LENGTH) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "text no puede superar 500 caracteres");
+        }
+
+        MunicipalRequest request = locked(requestId);
+        if (!caller.userId().trim().equals(request.getSolicitanteId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo el titular del tramite puede comentarlo");
+        }
+        if (TERMINAL.contains(request.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "No se puede comentar un tramite cerrado");
+        }
+        if (activity.countByRequestIdAndKind(request.getId(), ActivityKind.COMENTARIO) >= MAX_COMMENTS) {
+            throw new ResponseStatusException(
+                    HttpStatus.CONFLICT,
+                    "El tramite ya tiene el maximo de " + MAX_COMMENTS + " comentarios"
+            );
+        }
+
+        RequestActivity comment = activity.save(RequestActivity.citizenComment(
+                request.getId(),
+                StoredInstant.now(),
+                caller.userId().trim(),
+                RequestService.snapshotName(caller.userName(), caller.userId()),
+                caller.role(),
+                cleaned,
+                image != null
+        ));
+        if (image != null) {
+            commentAttachments.save(new RequestActivityAttachment(comment, image));
+        }
+        // Sin comandos de RabbitMQ: un comentario no envía correo.
+        events.record(request, comment, UUID.randomUUID());
+        return build(request, caller, false);
+    }
+
+    /** Un comentario de otro trámite responde 404 aunque quien pide vea los dos. */
+    @Transactional(readOnly = true)
+    public RequestAttachmentContent getCommentAttachment(String requestId, String commentId, CallerContext caller) {
+        requireUser(caller);
+        MunicipalRequest request = visible(requestId, caller);
+        RequestActivity comment = activity.findById(commentId)
+                .filter(row -> row.getRequestId().equals(request.getId()))
+                .filter(row -> row.getKind() == ActivityKind.COMENTARIO && row.isHasAttachment())
+                .orElseThrow(RequestActivityService::imageNotFound);
+        RequestActivityAttachment attachment = commentAttachments
+                .findByActivityIdAndRequestId(comment.getId(), request.getId())
+                .orElseThrow(RequestActivityService::imageNotFound);
+        return new RequestAttachmentContent(
+                attachment.getContent(),
+                attachment.getContentType(),
+                attachment.getFileName()
+        );
     }
 
     /** Historial visible para quien pide. El vecino no recibe gestiones ni el resumen de intentos. */
@@ -256,7 +337,8 @@ public class RequestActivityService {
                 staff ? event.getAssigneeId() : null,
                 staff ? event.getAssigneeName() : null,
                 staff ? event.getPreviousAssigneeId() : null,
-                staff ? event.getPreviousAssigneeName() : null
+                staff ? event.getPreviousAssigneeName() : null,
+                event.isHasAttachment()
         );
     }
 
@@ -272,6 +354,10 @@ public class RequestActivityService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado");
         }
         return found;
+    }
+
+    private static ResponseStatusException imageNotFound() {
+        return new ResponseStatusException(HttpStatus.NOT_FOUND, "Imagen no encontrada");
     }
 
     private static void requireUser(CallerContext caller) {

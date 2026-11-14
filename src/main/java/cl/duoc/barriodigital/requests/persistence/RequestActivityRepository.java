@@ -1,5 +1,6 @@
 package cl.duoc.barriodigital.requests.persistence;
 
+import cl.duoc.barriodigital.requests.domain.ActivityKind;
 import cl.duoc.barriodigital.requests.domain.RequestActivity;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -11,4 +12,6 @@ import java.util.List;
 public interface RequestActivityRepository extends JpaRepository<RequestActivity, String> {
 
     List<RequestActivity> findByRequestIdOrderByOccurredAtAsc(String requestId);
+
+    long countByRequestIdAndKind(String requestId, ActivityKind kind);
 }
