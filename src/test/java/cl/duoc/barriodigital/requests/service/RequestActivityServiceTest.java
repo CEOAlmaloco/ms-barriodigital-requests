@@ -9,11 +9,13 @@ import cl.duoc.barriodigital.requests.domain.RequestActivity;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.messaging.DomainEventRecorder;
 import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
+import cl.duoc.barriodigital.requests.persistence.RequestActivityAttachmentRepository;
 import cl.duoc.barriodigital.requests.persistence.RequestActivityRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
 import cl.duoc.barriodigital.requests.web.dto.ActividadView;
 import cl.duoc.barriodigital.requests.web.dto.RegisterGestionDto;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.function.Executable;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -28,6 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -39,7 +42,9 @@ class RequestActivityServiceTest {
     private final MunicipalRequestRepository requests = mock(MunicipalRequestRepository.class);
     private final RequestActivityRepository activity = mock(RequestActivityRepository.class);
     private final DomainEventRecorder events = mock(DomainEventRecorder.class);
-    private final RequestActivityService service = new RequestActivityService(requests, activity, events);
+    private final RequestActivityAttachmentRepository commentAttachments = mock(RequestActivityAttachmentRepository.class);
+    private final RequestActivityService service =
+            new RequestActivityService(requests, activity, events, commentAttachments);
 
     private static final CallerContext FUNCIONARIO = new CallerContext("func", "Funcionario", "Ana%20Mar%C3%ADa");
 
@@ -356,6 +361,93 @@ class RequestActivityServiceTest {
         assertEquals(300, tiempos.gestionMunicipalSegundos());
         assertEquals(400, tiempos.totalResolucionSegundos());
         assertNull(tiempos.desdeElIngresoSegundos());
+    }
+
+    private static final CallerContext TITULAR = new CallerContext("vecino-1", "Vecino", "Vecino%20Uno");
+
+    @Test
+    void comentarSinIdentidadResponde400() {
+        assertStatus(400, () -> service.comment("x", "Hola", null, new CallerContext(null, "Vecino")));
+        verifyNoInteractions(requests, activity, events, commentAttachments);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"Funcionario", "Admin", "Auditor"})
+    void soloElVecinoComentaYElRolSeRevisaAntesQueElTexto(String role) {
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> service.comment("x", " ", null, new CallerContext("u1", role)));
+
+        assertEquals(403, error.getStatusCode().value());
+        assertEquals("Solo el Vecino titular puede comentar el tramite", error.getReason());
+        verifyNoInteractions(requests, activity, events, commentAttachments);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "   "})
+    void elTextoVacioResponde400AntesDeBuscarElTramite(String text) {
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> service.comment("no-existe", text, null, TITULAR));
+
+        assertEquals(400, error.getStatusCode().value());
+        assertEquals("text es obligatorio", error.getReason());
+        assertStatus(400, () -> service.comment("no-existe", null, null, TITULAR));
+        verifyNoInteractions(requests);
+    }
+
+    @Test
+    void elTextoAdmite500CaracteresSinContarLosExtremosYRechaza501() {
+        MunicipalRequest request = request();
+        when(requests.findByIdForUpdate(request.getId())).thenReturn(Optional.of(request));
+        when(activity.save(any(RequestActivity.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        service.comment(request.getId(), "  " + "a".repeat(500) + "  ", null, TITULAR);
+
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> service.comment(request.getId(), "a".repeat(501), null, TITULAR));
+        assertEquals(400, error.getStatusCode().value());
+        assertEquals("text no puede superar 500 caracteres", error.getReason());
+    }
+
+    @Test
+    void unTramiteInexistenteResponde404() {
+        when(requests.findByIdForUpdate("no-existe")).thenReturn(Optional.empty());
+
+        assertStatus(404, () -> service.comment("no-existe", "Hola", null, TITULAR));
+    }
+
+    @Test
+    void otroVecinoResponde403AunqueElTramiteEsteCerrado() {
+        MunicipalRequest request = request();
+        request.setStatus(RequestStatus.RESUELTO);
+        when(requests.findByIdForUpdate(request.getId())).thenReturn(Optional.of(request));
+
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> service.comment(request.getId(), "Hola", null, new CallerContext("vecino-2", "Vecino")));
+
+        assertEquals(403, error.getStatusCode().value());
+        assertEquals("Solo el titular del tramite puede comentarlo", error.getReason());
+        verify(activity, never()).save(any(RequestActivity.class));
+    }
+
+    @Test
+    void elTopeSeCuentaConLaFilaBloqueadaYNoGuardaNada() {
+        MunicipalRequest request = request();
+        when(requests.findByIdForUpdate(request.getId())).thenReturn(Optional.of(request));
+        when(activity.countByRequestIdAndKind(request.getId(), ActivityKind.COMENTARIO)).thenReturn(20L);
+
+        ResponseStatusException error = assertThrows(ResponseStatusException.class,
+                () -> service.comment(request.getId(), "Hola", null, TITULAR));
+
+        assertEquals(409, error.getStatusCode().value());
+        var order = inOrder(requests, activity);
+        order.verify(requests).findByIdForUpdate(request.getId());
+        order.verify(activity).countByRequestIdAndKind(request.getId(), ActivityKind.COMENTARIO);
+        verify(activity, never()).save(any(RequestActivity.class));
+        verifyNoInteractions(events, commentAttachments);
+    }
+
+    private static void assertStatus(int status, Executable call) {
+        assertEquals(status, assertThrows(ResponseStatusException.class, call).getStatusCode().value());
     }
 
     /** Trámite del vecino "vecino-1", a cargo del Funcionario "func" que operan estos tests. */

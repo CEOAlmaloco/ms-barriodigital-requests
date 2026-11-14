@@ -38,7 +38,8 @@ public record ActividadView(
             String assigneeId,
             String assigneeName,
             String previousAssigneeId,
-            String previousAssigneeName
+            String previousAssigneeName,
+            boolean hasAttachment
     ) {
     }
 

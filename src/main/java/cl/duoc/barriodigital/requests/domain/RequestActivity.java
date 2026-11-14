@@ -101,6 +101,10 @@ public class RequestActivity {
     @Column(name = "previous_assignee_name", length = 200)
     private String previousAssigneeName;
 
+    /** Solo un COMENTARIO puede tenerla; la imagen vive en request_activity_attachments. */
+    @Column(name = "has_attachment", nullable = false, columnDefinition = "NUMBER(1) DEFAULT 0")
+    private boolean hasAttachment;
+
     protected RequestActivity() {
         // JPA
     }
@@ -219,6 +223,31 @@ public class RequestActivity {
         );
         event.reason = Integer.toString(score);
         event.note = blankToNull(comment);
+        return event;
+    }
+
+    /** Comentario del titular. Es público; el texto queda en note. */
+    public static RequestActivity citizenComment(
+            String requestId,
+            Instant occurredAt,
+            String actorId,
+            String actorName,
+            String actorRole,
+            String text,
+            boolean hasAttachment
+    ) {
+        RequestActivity event = new RequestActivity(
+                requestId,
+                occurredAt,
+                ActivityKind.COMENTARIO,
+                ActivityVisibility.PUBLICO,
+                actorId,
+                actorName,
+                actorRole,
+                hasAttachment ? "Agregó un comentario con una foto" : "Agregó un comentario"
+        );
+        event.note = text;
+        event.hasAttachment = hasAttachment;
         return event;
     }
 
@@ -405,6 +434,10 @@ public class RequestActivity {
 
     public String getPreviousAssigneeName() {
         return previousAssigneeName;
+    }
+
+    public boolean isHasAttachment() {
+        return hasAttachment;
     }
 
     /** El hito público de la primera asignación, que el staff no necesita: ya tiene la fila interna. */

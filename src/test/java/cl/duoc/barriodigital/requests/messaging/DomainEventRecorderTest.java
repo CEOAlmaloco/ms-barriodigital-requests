@@ -239,6 +239,25 @@ class DomainEventRecorderTest {
     }
 
     @Test
+    void requestCitizenCommentSinElTexto() throws Exception {
+        RequestActivity row = RequestActivity.citizenComment(REQUEST_ID, AT, "oid-vecino", "Vecino Test", "Vecino",
+                "Mi vecino Juan Pérez, fono 9 1234 5678, vio el bache", true);
+
+        OutboxEvent saved = recorder.record(request(), row, TRACE);
+
+        assertEquals(DomainEventRecorder.REQUEST_CITIZEN_COMMENT, saved.getEventType());
+        JsonNode json = envelope(saved, "request.citizen-comment");
+        assertEquals("Vecino", json.get("actor").get("role").asText());
+        JSONAssert.assertEquals("""
+                {
+                  "requestId": "7b6e1d44-2a18-4c90-9f01-88aa11bb22cc",
+                  "folio": "BD-2026-000123",
+                  "hasAttachment": true
+                }""", json.get("payload").toString(), JSONCompareMode.STRICT);
+        assertFalse(saved.getPayload().contains("Juan"));
+    }
+
+    @Test
     void elHitoPublicoDeAsignacionNoGeneraEvento() {
         RequestActivity milestone = RequestActivity.assignmentMilestone(REQUEST_ID, AT);
 
