@@ -98,7 +98,8 @@ Transiciones válidas: `GET /api/requests/meta/transitions`
 
 El listado `GET /api/requests` responde **por página**, con filtros, orden y búsqueda. Ver
 [Listado paginado](#listado-paginado-ep3-30). `GET /api/requests/export` descarga ese mismo listado en CSV, ver
-[Exportación CSV](#exportación-csv-ep3-63).
+[Exportación CSV](#exportación-csv-ep3-63). Los posibles duplicados de un alta o de un trámite ya ingresado están en
+[Posibles duplicados](#posibles-duplicados-ep3-75).
 Vecino: el servidor fuerza `solicitanteId = X-User-Id`. Funcionario/Admin/Auditor: ven todos.
 Las respuestas salen como `RequestView`, armado según el rol: la entidad nunca se serializa. El Auditor recibe
 `solicitanteEmail` en `null`.
@@ -123,6 +124,16 @@ curl "http://localhost:8081/api/requests?open=true&from=2026-09-01&to=2026-09-30
 # Exportar a CSV los abiertos sin responsable (staff; el Vecino exporta solo los suyos)
 curl "http://localhost:8081/api/requests/export?open=true&assignee=none" -o tramites.csv `
   -H "X-User-Id: oid-func-prueba" `
+  -H "X-User-Roles: Funcionario"
+
+# Posibles duplicados antes de crear (solo Vecino; EP3-75)
+curl "http://localhost:8081/api/requests/duplicates?procedureType=bache&latitude=-37.8742&longitude=-71.5915&sector=ralco" `
+  -H "X-User-Id: oid-de-prueba" `
+  -H "X-User-Roles: Vecino"
+
+# Posibles duplicados de un trámite ingresado (Funcionario o Admin; EP3-75)
+curl http://localhost:8081/api/requests/<id>/duplicates `
+  -H "X-User-Id: oid-funcionario" `
   -H "X-User-Roles: Funcionario"
 
 # Por id
@@ -357,7 +368,7 @@ tiene un solo componente de tabla. Los filtros se combinan por un Y lógico, y u
 | `sort` | `campo` o `campo,asc\|desc`, con `createdAt`, `status` o `folio`. Sin dirección, ascendente. Por defecto `createdAt,desc` | `sort no es valido` |
 | `q` | Texto que se busca en el folio, la descripción y la dirección, sin distinguir mayúsculas. Hasta 100 caracteres | `q no puede superar 100 caracteres` |
 | `status` | Un estado, por ejemplo `EN_GESTION` | Error de conversión de Spring |
-| `open` | `true` son los abiertos y `false` los cerrados (`RESUELTO` o `RECHAZADO`). Con `status`, Y lógico: `status=RESUELTO&open=true` da una página vacía | `open debe ser true o false` |
+| `open` | `true` son los abiertos y `false` los cerrados (`RESUELTO`, `RECHAZADO` o `CANCELADO`). Con `status`, Y lógico: `status=RESUELTO&open=true` da una página vacía | `open debe ser true o false` |
 | `procedureType` | Código del tipo, sin distinguir mayúsculas. Un código que no existe da una página vacía, porque los tipos viven en catalog | |
 | `sector` | Clave de sector del alta, por ejemplo `villa-ralco` | `sector no es valido` |
 | `from`, `to` | Días `yyyy-MM-dd` en `America/Santiago`, los dos completos: `to=2026-11-06` incluye un trámite de ese día a las 22:00 en Chile, aunque en UTC ya sea el 7 | `from no puede ser posterior a to` |
@@ -377,7 +388,8 @@ tiene un solo componente de tabla. Los filtros se combinan por un Y lógico, y u
 - `content` lleva `RequestView`, proyectado por rol como en el detalle. El Vecino solo ve sus trámites, también al
   buscar y al filtrar.
 - El orden siempre desempata por `id`, así que un trámite no se repite ni se pierde entre páginas.
-  `sort=status` sigue el ciclo de vida (`INGRESADO` → … → `RESUELTO` → `RECHAZADO`), no el orden alfabético.
+  `sort=status` sigue el ciclo de vida (`INGRESADO` → … → `RESUELTO` → `RECHAZADO` → `CANCELADO`), no el orden
+  alfabético.
   Dentro de un mismo estado van primero los más recientes.
 - `%`, `_` y `\` en `q` se buscan como texto, no como comodines.
 - Para un conteo basta `size=1`: `totalElements` trae el total (bloques de `/inicio`, EP3-04, sección 7).
@@ -456,6 +468,42 @@ está en `barriodigital-infra/docs/decisiones.md`, "Contrato: exportación CSV d
 
 No lleva la descripción, la ubicación, la encuesta ni ids internos: el CSV es para gestión y no copia más datos
 personales que los necesarios.
+
+## Posibles duplicados (EP3-75)
+
+Trámites **abiertos** del **mismo tipo** dentro del radio de un punto o, en su defecto, del mismo sector. Es solo
+lectura: no escribe, no genera eventos y no bloquea el alta. El contrato está en
+`barriodigital-infra/docs/decisiones.md`, "Contrato: aviso de posible duplicado (EP3-75)".
+
+| Ruta | Roles | Base de la búsqueda |
+|---|---|---|
+| `GET /api/requests/duplicates` | Vecino | `procedureType` y un punto (`latitude` + `longitude`), un `sector` o ambos |
+| `GET /api/requests/{id}/duplicates` | Funcionario, Admin | Tipo, punto y sector del propio trámite, que no aparece en el resultado |
+
+- **Radio:** `barriodigital.duplicates.radius-meters` (150 m; de 10 a 2000). El cliente no lo elige. Tope:
+  `max-results` (5; de 1 a 20). Fuera de rango, el servicio no arranca. Se pueden cambiar por entorno, por ejemplo
+  `BARRIODIGITAL_DUPLICATES_RADIUSMETERS=200`.
+- **Con punto:** entran los que tienen punto dentro del radio, y además, si viene `sector`, los de ese sector sin
+  punto. **Sin punto:** todos los del sector. El sector `otro` no cuenta como coincidencia, pero no impide buscar
+  por cercanía; solo con `otro` y sin punto, la lista viene vacía.
+- **Orden:** primero los del radio, por distancia exacta; después los del sector, del más reciente al más antiguo.
+  Los empates van por fecha descendente y después por id. El tope se aplica al final.
+- **Respuesta:** lista de `folio`, `procedureType`, `procedureLabel`, `status`, `sector`, `distanceMeters`
+  (redondeada a 10 m; `null` si coincidió por sector) y `createdDate` (día en `America/Santiago`). El Vecino recibe
+  además `mine`; el personal, `id` y `hasAssignee`. Nunca lleva datos del solicitante, descripción, dirección,
+  referencia, coordenadas, imagen ni responsable.
+
+| Si | Responde |
+|---|---|
+| Falta `X-User-Id` | 400 `USER_ID_REQUIRED` |
+| El rol no corresponde a la ruta | 403 |
+| El trámite no existe (`/{id}/duplicates`) | 404 `REQUEST_NOT_FOUND` |
+| Falta `procedureType` o tiene mal formato | 400 `procedureType es obligatorio` o el mismo mensaje del alta |
+| Llega solo una coordenada, no es un número finito o cae fuera de la comuna | 400 `latitude y longitude van juntas`, `latitude y longitude deben ser numeros` o `El punto esta fuera de la comuna` |
+| `sector` no es una clave del alta | 400 `sector no es valido` |
+| No llega ni punto ni sector | 400 `Indica un punto o un sector` |
+
+Índice `idx_municipal_requests_type_status (procedure_type, status)`, que Hibernate crea por nombre al arrancar.
 
 **Límites conocidos**
 

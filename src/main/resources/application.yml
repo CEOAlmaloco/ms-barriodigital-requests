@@ -77,6 +77,10 @@ barriodigital:
     scheduling:
       enabled: true
     relay-delay-ms: 1000
+  # Posibles duplicados (EP3-75): radio de 10 a 2000 m y tope de 1 a 20.
+  duplicates:
+    radius-meters: 150
+    max-results: 5
   # Contrato EP2-02. Mismas claves que notify.
   rabbit:
     exchange:

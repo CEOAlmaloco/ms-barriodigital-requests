@@ -28,7 +28,9 @@ import java.util.UUID;
         indexes = {
                 @Index(name = "idx_municipal_requests_solicitante_created", columnList = "solicitante_id, created_at"),
                 @Index(name = "idx_municipal_requests_created", columnList = "created_at"),
-                @Index(name = "idx_municipal_requests_assignee", columnList = "assignee_id")
+                @Index(name = "idx_municipal_requests_assignee", columnList = "assignee_id"),
+                // Posibles duplicados (EP3-75): mismo tipo y estado abierto.
+                @Index(name = "idx_municipal_requests_type_status", columnList = "procedure_type, status")
         }
 )
 public class MunicipalRequest {
