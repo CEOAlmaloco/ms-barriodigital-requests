@@ -52,7 +52,7 @@ public final class MunicipalRequestSpecifications {
         return (root, query, cb) -> status == null ? null : cb.equal(root.get("status"), status);
     }
 
-    /** true deja los trámites abiertos y false los cerrados (RESUELTO o RECHAZADO). */
+    /** true deja los trámites abiertos y false los cerrados (RESUELTO, RECHAZADO o CANCELADO). */
     public static Specification<MunicipalRequest> open(Boolean open) {
         return (root, query, cb) -> {
             if (open == null) {
@@ -93,6 +93,24 @@ public final class MunicipalRequestSpecifications {
 
     public static Specification<MunicipalRequest> sectorIs(String sector) {
         return (root, query, cb) -> sector == null ? null : cb.equal(root.get("sector"), sector);
+    }
+
+    /** Con punto dentro de la caja, bordes incluidos (EP3-75). La distancia exacta se calcula después. */
+    public static Specification<MunicipalRequest> pointWithin(
+            double south, double north, double west, double east
+    ) {
+        return (root, query, cb) -> cb.and(
+                cb.between(root.<Double>get("latitude"), south, north),
+                cb.between(root.<Double>get("longitude"), west, east)
+        );
+    }
+
+    public static Specification<MunicipalRequest> withoutPoint() {
+        return (root, query, cb) -> cb.isNull(root.get("latitude"));
+    }
+
+    public static Specification<MunicipalRequest> idIsNot(String id) {
+        return (root, query, cb) -> id == null ? null : cb.notEqual(root.get("id"), id);
     }
 
     /**

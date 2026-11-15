@@ -52,7 +52,7 @@ final class LocationRules {
 
         LocationPrecision precision = null;
         if (hasLatitude) {
-            if (latitude < SOUTH || latitude > NORTH || longitude < WEST || longitude > EAST) {
+            if (!insideCommune(latitude, longitude)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "El punto esta fuera de la comuna.");
             }
             precision = precisionOf(body.locationPrecision());
@@ -61,6 +61,11 @@ final class LocationRules {
         }
 
         request.placeLocation(sector, blankToNull(body.locationReference()), latitude, longitude, precision);
+    }
+
+    /** Dentro de la caja de la comuna, bordes incluidos. NaN queda fuera. */
+    static boolean insideCommune(double latitude, double longitude) {
+        return latitude >= SOUTH && latitude <= NORTH && longitude >= WEST && longitude <= EAST;
     }
 
     private static LocationPrecision precisionOf(String raw) {

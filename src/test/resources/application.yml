@@ -49,6 +49,9 @@ barriodigital:
     scheduling:
       enabled: false
     relay-delay-ms: 1000
+  duplicates:
+    radius-meters: 150
+    max-results: 5
   rabbit:
     exchange:
       topic: cmd.topic
