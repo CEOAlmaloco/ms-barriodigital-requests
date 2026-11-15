@@ -96,7 +96,7 @@ class RequestAssignmentH2Test {
 
         assignment.take(request.getId(), ANA);
 
-        assertEquals(2, activity.findByRequestIdOrderByOccurredAtAsc(request.getId()).size());
+        assertEquals(2, activity.findByRequestIdOrderByActivitySequenceAsc(request.getId()).size());
         RequestActivity withoutActor = RequestActivity.statusChanged(request.getId(), Instant.now(), null, null, null,
                 RequestStatus.INGRESADO, RequestStatus.ADMITIDO, null, null);
         assertThrows(DataIntegrityViolationException.class, () -> activity.saveAndFlush(withoutActor));

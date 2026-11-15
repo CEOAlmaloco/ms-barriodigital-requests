@@ -317,7 +317,8 @@ public class RequestController {
 
     /**
      * Lista trámites por página (EP3-30). Las fechas from y to llegan como día, por ejemplo 2026-10-25.
-     * assignee=me|none filtra por responsable, solo para staff. Las reglas de cada parámetro están en el README.
+     * assignee=me|none filtra por responsable y contactDue=true por reintento de contacto pendiente, los dos solo para
+     * staff. Las reglas de cada parámetro están en el README.
      */
     @GetMapping
     public PageView<RequestView> list(
@@ -329,6 +330,7 @@ public class RequestController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String procedureType,
             @RequestParam(required = false) String sector,
+            @RequestParam(required = false) String contactDue,
             @RequestParam(required = false) Integer page,
             @RequestParam(required = false) Integer size,
             @RequestParam(required = false) String sort,
@@ -337,7 +339,7 @@ public class RequestController {
     ) {
         CallerContext caller = new CallerContext(userId, roles);
         RequestListQuery params = new RequestListQuery(
-                status, from, to, assignee, open, q, procedureType, sector, page, size, sort);
+                status, from, to, assignee, open, q, procedureType, sector, contactDue, page, size, sort);
         return PageView.of(requestService.list(params, caller), request -> RequestView.of(request, caller));
     }
     

@@ -11,7 +11,8 @@ import java.util.List;
  */
 public interface RequestActivityRepository extends JpaRepository<RequestActivity, String> {
 
-    List<RequestActivity> findByRequestIdOrderByOccurredAtAsc(String requestId);
+    /** Expediente en orden de registro. El filtro contactDue usa el mismo orden para elegir la última gestión. */
+    List<RequestActivity> findByRequestIdOrderByActivitySequenceAsc(String requestId);
 
     long countByRequestIdAndKind(String requestId, ActivityKind kind);
 }

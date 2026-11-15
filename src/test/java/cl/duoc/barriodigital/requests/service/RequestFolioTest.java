@@ -93,7 +93,7 @@ class RequestFolioTest {
         MunicipalRequest stored = repository.findById(created.getId()).orElseThrow();
         assertEquals(newYearEve, stored.getCreatedAt());
         assertEquals(newYearEve, stored.getUpdatedAt());
-        List<RequestActivity> marks = activity.findByRequestIdOrderByOccurredAtAsc(created.getId());
+        List<RequestActivity> marks = activity.findByRequestIdOrderByActivitySequenceAsc(created.getId());
         assertEquals(ActivityKind.CREADO, marks.get(0).getKind());
         assertEquals(newYearEve, marks.get(0).getOccurredAt());
         assertTrue(counters.findById(2032).isEmpty());

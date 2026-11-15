@@ -8,6 +8,7 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Index;
 import jakarta.persistence.Table;
 import org.hibernate.annotations.Check;
+import org.hibernate.annotations.Generated;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -31,6 +32,15 @@ public class RequestActivity {
     @Column(name = "request_id", length = 36, nullable = false)
     private String requestId;
 
+    /**
+     * Orden del expediente. Lo asigna Oracle al insertar (db/activity-sequence.sql); como cada escritura toma el
+     * bloqueo del trámite, sigue el orden real de sus operaciones. No sale en la API ni en Kafka.
+     */
+    @Generated
+    @Column(name = "activity_sequence", nullable = false, insertable = false, updatable = false)
+    private Long activitySequence;
+
+    /** Hora informativa de la marca. No define el orden: el reloj puede retroceder. */
     @Column(name = "occurred_at", nullable = false)
     private Instant occurredAt;
 

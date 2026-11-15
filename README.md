@@ -362,6 +362,7 @@ tiene un solo componente de tabla. Los filtros se combinan por un Y lógico, y u
 | `sector` | Clave de sector del alta, por ejemplo `villa-ralco` | `sector no es valido` |
 | `from`, `to` | Días `yyyy-MM-dd` en `America/Santiago`, los dos completos: `to=2026-11-06` incluye un trámite de ese día a las 22:00 en Chile, aunque en UTC ya sea el 7 | `from no puede ser posterior a to` |
 | `assignee` | `me` o `none`, solo staff (EP3-05, sección 8). El Vecino que lo usa recibe 403 `El filtro assignee es solo para staff` | `assignee debe ser me o none` |
+| `contactDue` | `true`, solo staff: trámites abiertos cuya última gestión agenda un reintento (`nextAttemptAt`) vencido o de hoy en `America/Santiago`. La última gestión es la última registrada, con el mismo orden del detalle (EP3-66). Para la bandeja: `assignee=me&contactDue=true`. El Vecino que lo usa recibe 403 `El filtro contactDue es solo para staff` | `contactDue debe ser true` |
 
 ```json
 {
@@ -391,6 +392,37 @@ tiene un solo componente de tabla. Los filtros se combinan por un Y lógico, y u
    bien. Si crece, el paso es Oracle Text.
 3. **`status` acepta un solo valor**, como antes de EP3-30. Aceptar varios separados por coma, como en report, es
    una mejora futura.
+
+## Orden del expediente (EP3-66)
+
+`request_activity.activity_sequence` define el orden del expediente: la línea de tiempo de `/actividad`, el resumen
+de contacto y la última gestión del filtro `contactDue`. Lo asigna Oracle al insertar, con `request_activity_seq`
+(`ORDER`), y como cada escritura toma antes el bloqueo de la fila del trámite, una operación posterior siempre
+recibe un valor mayor. `occurredAt` queda como hora informativa: dos marcas pueden tener el mismo instante y el reloj
+del servidor puede retroceder. La columna no sale en la API ni en los eventos de Kafka.
+
+### Antes de desplegar: `activity-sequence.sql`
+
+Toda base que ya tiene `request_activity` lo necesita una vez, **sin escrituras concurrentes**:
+
+1. **Detener requests.** Ningún insert puede ocurrir mientras el script numera las filas y crea la secuencia.
+2. **Correr** `src/main/resources/db/activity-sequence.sql` con SQLcl, SQL*Plus o el worksheet de SQL Developer
+   ("Ejecutar script"). Se puede volver a correr, también tras una ejecución interrumpida: completa lo que falta.
+3. **Revisar la comprobación final:** `activity_sequence` con `NULLABLE: N` y `DEFAULT_ON_NULL: YES`,
+   `request_activity_seq` con `ORDER_FLAG: Y`, `uk_request_activity_sequence` `ENABLED` y `VALIDATED`, y
+   `sin_secuencia` en 0.
+4. **Desplegar y levantar requests.**
+
+Una base nueva creada con `db/schema.sql` ya trae la secuencia y la columna. Si fue Hibernate quien creó la tabla, la
+columna queda sin valor automático y el primer insert falla con ORA-01400: detener requests y correr el script.
+
+En los tests, `src/test/resources/db/h2-activity-sequence.sql` agrega la secuencia y la UNIQUE en H2, sin `ORDER`.
+
+**Límites conocidos**
+
+1. **Historial anterior al script:** sus filas se numeran por `occurred_at` e `id`, los únicos datos disponibles. Dos
+   marcas antiguas con el mismo instante quedan en un orden estable, no necesariamente en el real. La garantía del
+   orden de las operaciones aplica a las actividades registradas después del script.
 
 ## Exportación CSV (EP3-63)
 

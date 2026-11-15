@@ -32,12 +32,14 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
+import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
 import static cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications.assignedTo;
+import static cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications.contactDueBefore;
 import static cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications.createdBefore;
 import static cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications.createdFrom;
 import static cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications.matches;
@@ -88,10 +90,11 @@ public class RequestService {
     private final FolioCounterService folios;
     private final DomainEventRecorder events;
     private final NotificationPreferenceService notificationPreferences;
+    private final Clock clock;
 
     /**
      * Recibe los repositorios del trámite y su imagen, el historial, el publicador de RabbitMQ, el contador de folios,
-     * el registro del outbox y las preferencias de aviso (EP3-65).
+     * el registro del outbox, las preferencias de aviso (EP3-65) y el reloj del día del filtro contactDue.
      */
     public RequestService(
             MunicipalRequestRepository repository,
@@ -100,7 +103,8 @@ public class RequestService {
             EventPublisher publisher,
             FolioCounterService folios,
             DomainEventRecorder events,
-            NotificationPreferenceService notificationPreferences
+            NotificationPreferenceService notificationPreferences,
+            Clock clock
     ) {
         this.repository = repository;
         this.activity = activity;
@@ -109,6 +113,7 @@ public class RequestService {
         this.folios = folios;
         this.events = events;
         this.notificationPreferences = notificationPreferences;
+        this.clock = clock;
     }
 
     /**
@@ -212,7 +217,9 @@ public class RequestService {
      * from y to son días civiles en America/Santiago y los dos se incluyen completos.
      * assignee (solo staff, EP3-05 sección 8): me son los trámites de quien llama y none los que no tienen responsable.
      * Para el Admin y el Auditor, me es vacío, porque nunca son responsables.
-     * Primero el 403 de assignee y después los 400, con los mensajes de EP3-07, sección 6.
+     * contactDue=true (solo staff, EP3-66) deja los abiertos cuya última gestión agenda un reintento vencido o de hoy
+     * en Chile.
+     * Primero los 403 de assignee y contactDue, y después los 400, con los mensajes de EP3-07, sección 6.
      */
     @Transactional(readOnly = true)
     public Page<MunicipalRequest> list(RequestListQuery params, CallerContext caller) {
@@ -248,6 +255,13 @@ public class RequestService {
                 default -> throw badRequest("assignee debe ser me o none");
             }
         }
+        String contactDue = blankToNull(params.contactDue());
+        if (contactDue != null && !caller.isStaff()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "El filtro contactDue es solo para staff");
+        }
+        if (contactDue != null && !contactDue.equals("true")) {
+            throw badRequest("contactDue debe ser true");
+        }
         if (params.from() != null && params.to() != null && params.from().isAfter(params.to())) {
             throw badRequest("from no puede ser posterior a to");
         }
@@ -259,6 +273,10 @@ public class RequestService {
         // Inicio del día siguiente, sin incluirlo: cubre el día entero, con microsegundos y cambios de hora.
         Instant beforeInstant = params.to() == null ? null : startOfCivilDay(params.to().plusDays(1));
         String ownerFilter = caller.mustFilterOwnRequests() ? caller.userId().trim() : null;
+        // Vencido o de hoy: antes del inicio de mañana en Chile.
+        Instant contactDueBefore = contactDue == null
+                ? null
+                : startOfCivilDay(LocalDate.now(clock.withZone(CivilTime.ZONE)).plusDays(1));
 
         return Specification.where(ownedBy(ownerFilter))
                 .and(statusIs(params.status()))
@@ -269,6 +287,7 @@ public class RequestService {
                 .and(unassigned(unassigned))
                 .and(procedureTypeIs(ProcedureTypes.normalize(blankToNull(params.procedureType()))))
                 .and(sectorIs(sector))
+                .and(contactDueBefore(contactDueBefore))
                 .and(matches(text));
     }
 

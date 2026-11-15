@@ -84,7 +84,8 @@ class RequestExportControllerTest {
         mockMvc.perform(get("/api/requests/export")
                         .param("status", "EN_GESTION").param("from", "2026-11-01").param("to", "2026-11-14")
                         .param("assignee", "me").param("open", "true").param("q", "poste")
-                        .param("procedureType", "bache").param("sector", "ralco").param("sort", "folio,desc")
+                        .param("procedureType", "bache").param("sector", "ralco").param("contactDue", "true")
+                        .param("sort", "folio,desc")
                         .param("page", "3").param("size", "1")
                         .header(CallerContext.HEADER_USER_ID, "func-1")
                         .header(CallerContext.HEADER_USER_ROLES, "Funcionario"))
@@ -94,7 +95,8 @@ class RequestExportControllerTest {
         ArgumentCaptor<CallerContext> caller = ArgumentCaptor.forClass(CallerContext.class);
         verify(exports).export(params.capture(), caller.capture());
         assertEquals(new RequestListQuery(RequestStatus.EN_GESTION, LocalDate.parse("2026-11-01"),
-                LocalDate.parse("2026-11-14"), "me", "true", "poste", "bache", "ralco", null, null, "folio,desc"),
+                LocalDate.parse("2026-11-14"), "me", "true", "poste", "bache", "ralco", "true", null, null,
+                "folio,desc"),
                 params.getValue());
         assertEquals("func-1", caller.getValue().userId());
         assertTrue(caller.getValue().isFuncionario());

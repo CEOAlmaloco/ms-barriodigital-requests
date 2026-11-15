@@ -53,7 +53,7 @@ class RequestActivityServiceTest {
         MunicipalRequest request = request();
         when(requests.findById(request.getId())).thenReturn(Optional.of(request));
         Instant created = request.getCreatedAt();
-        when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
+        when(activity.findByRequestIdOrderByActivitySequenceAsc(request.getId())).thenReturn(List.of(
                 RequestActivity.created(request.getId(), created, "vecino", "Vecino", "Vecino"),
                 RequestActivity.gestion(request.getId(), created.plusSeconds(60), "func", "Ana", "Funcionario",
                         ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, "nota interna", created.plusSeconds(3600), null)
@@ -72,7 +72,7 @@ class RequestActivityServiceTest {
         MunicipalRequest request = request();
         when(requests.findById(request.getId())).thenReturn(Optional.of(request));
         Instant created = request.getCreatedAt();
-        when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
+        when(activity.findByRequestIdOrderByActivitySequenceAsc(request.getId())).thenReturn(List.of(
                 RequestActivity.created(request.getId(), created, "vecino-1", "Vecino Uno", "Vecino"),
                 RequestActivity.statusChanged(request.getId(), created.plusSeconds(60), "oid-func", "Ana Funcionaria", "Funcionario",
                         RequestStatus.INGRESADO, RequestStatus.ADMITIDO, null, null)
@@ -94,7 +94,7 @@ class RequestActivityServiceTest {
         MunicipalRequest request = request();
         when(requests.findById(request.getId())).thenReturn(Optional.of(request));
         Instant created = request.getCreatedAt();
-        when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
+        when(activity.findByRequestIdOrderByActivitySequenceAsc(request.getId())).thenReturn(List.of(
                 RequestActivity.created(request.getId(), created, "vecino-1", "Vecino Uno", "Vecino"),
                 RequestActivity.statusChanged(request.getId(), created.plusSeconds(60), "adm-1", "Admin", "Admin",
                         RequestStatus.INGRESADO, RequestStatus.ADMITIDO, null, "Reclamo en la OIRS")
@@ -114,7 +114,7 @@ class RequestActivityServiceTest {
         MunicipalRequest request = request();
         when(requests.findById(request.getId())).thenReturn(Optional.of(request));
         Instant created = request.getCreatedAt();
-        when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
+        when(activity.findByRequestIdOrderByActivitySequenceAsc(request.getId())).thenReturn(List.of(
                 RequestActivity.statusChanged(request.getId(), created.plusSeconds(60), "adm-1", "Admin", "Admin",
                         RequestStatus.INGRESADO, RequestStatus.RECHAZADO, "Duplicado", "Reclamo en la OIRS")
         ));
@@ -171,7 +171,7 @@ class RequestActivityServiceTest {
         MunicipalRequest request = request();
         when(requests.findById(request.getId())).thenReturn(Optional.of(request));
         Instant assignedAt = request.getCreatedAt().plusSeconds(300);
-        when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
+        when(activity.findByRequestIdOrderByActivitySequenceAsc(request.getId())).thenReturn(List.of(
                 RequestActivity.created(request.getId(), request.getCreatedAt(), "vecino-1", "Vecino Uno", "Vecino"),
                 RequestActivity.assigned(request.getId(), assignedAt, "func", "Ana", "Funcionario", "func", "Ana", null, null, null),
                 RequestActivity.assignmentMilestone(request.getId(), assignedAt)
@@ -203,7 +203,7 @@ class RequestActivityServiceTest {
     void sinAsignacionElStaffVeQueElTiempoNoSeCalcula() {
         MunicipalRequest request = request();
         when(requests.findById(request.getId())).thenReturn(Optional.of(request));
-        when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
+        when(activity.findByRequestIdOrderByActivitySequenceAsc(request.getId())).thenReturn(List.of(
                 RequestActivity.created(request.getId(), request.getCreatedAt(), "vecino-1", "Vecino Uno", "Vecino")));
 
         ActividadView staff = service.get(request.getId(), new CallerContext("func", "Funcionario"));
@@ -233,7 +233,7 @@ class RequestActivityServiceTest {
         MunicipalRequest request = request();
         when(requests.findById(request.getId())).thenReturn(Optional.of(request));
         Instant created = request.getCreatedAt();
-        when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of(
+        when(activity.findByRequestIdOrderByActivitySequenceAsc(request.getId())).thenReturn(List.of(
                 RequestActivity.created(request.getId(), created, "vecino", "Vecino", "Vecino"),
                 RequestActivity.gestion(request.getId(), created.plusSeconds(90), "func", "Ana", "Funcionario",
                         ContactChannel.LLAMADA, ContactResult.NO_CONTESTA, null, null, null)
@@ -261,7 +261,7 @@ class RequestActivityServiceTest {
     void elAuditorNoRegistraGestionesYElFuncionarioSi() {
         MunicipalRequest request = request();
         when(requests.findByIdForUpdate(request.getId())).thenReturn(Optional.of(request));
-        when(activity.findByRequestIdOrderByOccurredAtAsc(request.getId())).thenReturn(List.of());
+        when(activity.findByRequestIdOrderByActivitySequenceAsc(request.getId())).thenReturn(List.of());
 
         assertThrows(ResponseStatusException.class, () -> service.registerGestion(
                 request.getId(),

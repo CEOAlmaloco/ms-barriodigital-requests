@@ -8,13 +8,13 @@ server:
     include-message: always
 
 spring:
-  # outbox_events y las restricciones de EP3-64 las crea un script, como en Oracle: corre después de que
-  # Hibernate arma el esquema de H2.
+  # outbox_events, las restricciones de EP3-64 y la secuencia del expediente las crea un script, como en Oracle:
+  # corre después de que Hibernate arma el esquema de H2.
   jpa:
     defer-datasource-initialization: true
   sql:
     init:
-      schema-locations: classpath:db/h2-outbox-events.sql,classpath:db/h2-citizen-comment.sql
+      schema-locations: classpath:db/h2-outbox-events.sql,classpath:db/h2-citizen-comment.sql,classpath:db/h2-activity-sequence.sql
   rabbitmq:
     addresses: 203.0.113.1:5672
     username: barriodigital
