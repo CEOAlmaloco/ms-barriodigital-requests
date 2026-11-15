@@ -1038,6 +1038,30 @@ class RequestServiceTest {
         verifyNoInteractions(repository);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"false", "TRUE", "1", "si"})
+    void elFiltroContactDueSoloAceptaTrue(String value) {
+        ResponseStatusException error = assertThrows(ResponseStatusException.class, () ->
+                requestService.list(query().contactDue(value).build(), new CallerContext("func", "Funcionario")));
+
+        assertEquals(400, error.getStatusCode().value());
+        assertEquals("contactDue debe ser true", error.getReason());
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void elFiltroContactDueEsSoloParaStaffYSuRechazoVaAntesDelValor() {
+        ResponseStatusException valid = assertThrows(ResponseStatusException.class, () ->
+                requestService.list(query().contactDue("true").build(), new CallerContext("vecino-1", "Vecino")));
+        ResponseStatusException invalid = assertThrows(ResponseStatusException.class, () ->
+                requestService.list(query().contactDue("x").build(), new CallerContext("vecino-1", "Vecino")));
+
+        assertEquals(403, valid.getStatusCode().value());
+        assertEquals("El filtro contactDue es solo para staff", valid.getReason());
+        assertEquals(403, invalid.getStatusCode().value());
+        verifyNoInteractions(repository);
+    }
+
     @Test
     void elListadoRechazaParametrosInvalidosConElMensajeDelContrato() {
         CallerContext funcionario = new CallerContext("func", "Funcionario");

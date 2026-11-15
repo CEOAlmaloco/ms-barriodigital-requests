@@ -308,7 +308,7 @@ class OutboxH2Test {
     }
 
     private List<RequestActivity> rows(String requestId) {
-        return activity.findByRequestIdOrderByOccurredAtAsc(requestId);
+        return activity.findByRequestIdOrderByActivitySequenceAsc(requestId);
     }
 
     private static List<String> types(List<OutboxEvent> events) {

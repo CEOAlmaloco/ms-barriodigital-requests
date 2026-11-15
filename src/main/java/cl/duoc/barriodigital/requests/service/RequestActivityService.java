@@ -200,7 +200,7 @@ public class RequestActivityService {
     }
 
     private ActividadView build(MunicipalRequest request, CallerContext caller, boolean staff) {
-        List<RequestActivity> all = activity.findByRequestIdOrderByOccurredAtAsc(request.getId());
+        List<RequestActivity> all = activity.findByRequestIdOrderByActivitySequenceAsc(request.getId());
         // Cada rol ve una sola fila de la asignación (EP3-05, sección 6.3): el Vecino el hito público,
         // el staff la fila interna, que ya trae el detalle.
         List<RequestActivity> visible = staff

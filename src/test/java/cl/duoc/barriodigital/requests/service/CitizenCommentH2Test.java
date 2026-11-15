@@ -283,7 +283,7 @@ class CitizenCommentH2Test {
         activityService.comment(second.getId(), "Sin foto", null, VECINO);
         String firstComment = commentRow(first.getId()).getId();
         String secondComment = commentRow(second.getId()).getId();
-        String created = activity.findByRequestIdOrderByOccurredAtAsc(first.getId()).get(0).getId();
+        String created = activity.findByRequestIdOrderByActivitySequenceAsc(first.getId()).get(0).getId();
 
         // El titular y el personal ven los dos trámites: igual el comentario de uno no se descarga por el otro.
         for (CallerContext caller : List.of(VECINO, FUNCIONARIO)) {
@@ -343,7 +343,7 @@ class CitizenCommentH2Test {
     }
 
     private RequestActivity commentRow(String requestId) {
-        List<RequestActivity> comments = activity.findByRequestIdOrderByOccurredAtAsc(requestId).stream()
+        List<RequestActivity> comments = activity.findByRequestIdOrderByActivitySequenceAsc(requestId).stream()
                 .filter(row -> row.getKind() == ActivityKind.COMENTARIO)
                 .toList();
         assertEquals(1, comments.size());

@@ -17,6 +17,7 @@ public record RequestListQuery(
         String q,
         String procedureType,
         String sector,
+        String contactDue,
         Integer page,
         Integer size,
         String sort

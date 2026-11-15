@@ -114,7 +114,7 @@ class RequestControllerViewTest {
         mockMvc.perform(get("/api/requests")
                         .param("status", "EN_GESTION").param("from", "2026-11-01").param("to", "2026-11-06")
                         .param("assignee", "me").param("open", "true").param("q", "bache")
-                        .param("procedureType", "alumbrado").param("sector", "pitril")
+                        .param("procedureType", "alumbrado").param("sector", "pitril").param("contactDue", "true")
                         .param("page", "2").param("size", "10").param("sort", "status,desc")
                         .header(CallerContext.HEADER_USER_ID, "func-1")
                         .header(CallerContext.HEADER_USER_ROLES, "Funcionario"))
@@ -124,7 +124,7 @@ class RequestControllerViewTest {
         ArgumentCaptor<RequestListQuery> params = ArgumentCaptor.forClass(RequestListQuery.class);
         verify(requestService).list(params.capture(), any());
         assertEquals(new RequestListQuery(RequestStatus.EN_GESTION, LocalDate.of(2026, 11, 1), LocalDate.of(2026, 11, 6),
-                "me", "true", "bache", "alumbrado", "pitril", 2, 10, "status,desc"), params.getValue());
+                "me", "true", "bache", "alumbrado", "pitril", "true", 2, 10, "status,desc"), params.getValue());
     }
 
     @Test

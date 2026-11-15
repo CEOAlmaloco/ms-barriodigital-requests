@@ -48,13 +48,14 @@ public class RequestExportController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String procedureType,
             @RequestParam(required = false) String sector,
+            @RequestParam(required = false) String contactDue,
             @RequestParam(required = false) String sort,
             @RequestHeader(value = CallerContext.HEADER_USER_ID, required = false) String userId,
             @RequestHeader(value = CallerContext.HEADER_USER_ROLES, required = false) String roles
     ) {
         CallerContext caller = new CallerContext(userId, roles);
         RequestListQuery params = new RequestListQuery(
-                status, from, to, assignee, open, q, procedureType, sector, null, null, sort);
+                status, from, to, assignee, open, q, procedureType, sector, contactDue, null, null, sort);
         byte[] csv = RequestCsvWriter.write(exports.export(params, caller));
         String fileName = "tramites-" + LocalDate.now(clock.withZone(CivilTime.ZONE)) + ".csv";
         return ResponseEntity.ok()

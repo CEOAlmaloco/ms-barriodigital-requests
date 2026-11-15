@@ -60,10 +60,14 @@ CREATE INDEX idx_municipal_requests_solicitante_created ON municipal_requests (s
 CREATE INDEX idx_municipal_requests_created ON municipal_requests (created_at);
 CREATE INDEX idx_municipal_requests_assignee ON municipal_requests (assignee_id);
 
+-- Orden del expediente: lo asigna Oracle al insertar. Las bases existentes usan activity-sequence.sql.
+CREATE SEQUENCE request_activity_seq START WITH 1 INCREMENT BY 1 ORDER NOCYCLE;
+
 -- Historial del expediente. Solo se inserta. La API no actualiza ni borra filas.
 CREATE TABLE request_activity (
     id               VARCHAR2(36)  PRIMARY KEY,
     request_id       VARCHAR2(36)  NOT NULL,
+    activity_sequence NUMBER(19)   DEFAULT ON NULL request_activity_seq.NEXTVAL,
     occurred_at      TIMESTAMP WITH TIME ZONE NOT NULL,
     kind             VARCHAR2(20)  NOT NULL,
     visibility       VARCHAR2(20)  NOT NULL,
@@ -89,6 +93,7 @@ CREATE TABLE request_activity (
     CONSTRAINT ck_request_activity_has_attachment CHECK (has_attachment IN (0, 1)),
     -- Destino de la FK compuesta de request_activity_attachments.
     CONSTRAINT uk_request_activity_request UNIQUE (id, request_id),
+    CONSTRAINT uk_request_activity_sequence UNIQUE (activity_sequence),
     -- Solo el hito público de asignación va sin actor (EP3-05). Las bases existentes usan assignment-request-activity.sql.
     CONSTRAINT ck_request_activity_actor
         CHECK (actor_id IS NOT NULL OR (kind = 'ASIGNACION' AND visibility = 'PUBLICO'))

@@ -1,12 +1,15 @@
 package cl.duoc.barriodigital.requests.persistence;
 
+import cl.duoc.barriodigital.requests.domain.ActivityKind;
 import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
+import cl.duoc.barriodigital.requests.domain.RequestActivity;
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
 import cl.duoc.barriodigital.requests.domain.RequestTransitions;
 import jakarta.persistence.criteria.CriteriaBuilder;
 import jakarta.persistence.criteria.Expression;
 import jakarta.persistence.criteria.Order;
 import jakarta.persistence.criteria.Root;
+import jakarta.persistence.criteria.Subquery;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.time.Instant;
@@ -90,6 +93,36 @@ public final class MunicipalRequestSpecifications {
 
     public static Specification<MunicipalRequest> sectorIs(String sector) {
         return (root, query, cb) -> sector == null ? null : cb.equal(root.get("sector"), sector);
+    }
+
+    /**
+     * Trámites abiertos cuya última gestión agenda un reintento antes de ese instante (EP3-66).
+     * La última es la de mayor activitySequence, el mismo orden del detalle.
+     */
+    public static Specification<MunicipalRequest> contactDueBefore(Instant before) {
+        return (root, query, cb) -> {
+            if (before == null) {
+                return null;
+            }
+            Subquery<String> due = query.subquery(String.class);
+            Root<RequestActivity> gestion = due.from(RequestActivity.class);
+
+            Subquery<String> later = due.subquery(String.class);
+            Root<RequestActivity> next = later.from(RequestActivity.class);
+            later.select(next.get("id")).where(
+                    cb.equal(next.get("requestId"), gestion.get("requestId")),
+                    cb.equal(next.get("kind"), ActivityKind.GESTION),
+                    cb.greaterThan(next.<Long>get("activitySequence"), gestion.<Long>get("activitySequence"))
+            );
+
+            due.select(gestion.get("id")).where(
+                    cb.equal(gestion.get("requestId"), root.get("id")),
+                    cb.equal(gestion.get("kind"), ActivityKind.GESTION),
+                    cb.lessThan(gestion.<Instant>get("nextAttemptAt"), before),
+                    cb.not(cb.exists(later))
+            );
+            return cb.and(open(true).toPredicate(root, query, cb), cb.exists(due));
+        };
     }
 
     /** Busca el texto en folio, descripción o dirección, sin distinguir mayúsculas. */

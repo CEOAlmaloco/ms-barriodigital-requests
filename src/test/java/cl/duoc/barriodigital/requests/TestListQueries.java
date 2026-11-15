@@ -16,6 +16,7 @@ public final class TestListQueries {
     private String q;
     private String procedureType;
     private String sector;
+    private String contactDue;
     private Integer page;
     private Integer size;
     private String sort;
@@ -40,11 +41,13 @@ public final class TestListQueries {
     public TestListQueries q(String value) { q = value; return this; }
     public TestListQueries procedureType(String value) { procedureType = value; return this; }
     public TestListQueries sector(String value) { sector = value; return this; }
+    public TestListQueries contactDue(String value) { contactDue = value; return this; }
     public TestListQueries page(Integer value) { page = value; return this; }
     public TestListQueries size(Integer value) { size = value; return this; }
     public TestListQueries sort(String value) { sort = value; return this; }
 
     public RequestListQuery build() {
-        return new RequestListQuery(status, from, to, assignee, open, q, procedureType, sector, page, size, sort);
+        return new RequestListQuery(
+                status, from, to, assignee, open, q, procedureType, sector, contactDue, page, size, sort);
     }
 }
