@@ -275,8 +275,8 @@ Las reglas viven en requests aunque el BFF también las aplique: requests no con
   en `PUT /status` y `POST /gestiones`. Se guarda en `request_activity.intervention_reason` y es interno: el Vecino
   nunca lo recibe y no entra en el `summary`. Para el Funcionario se ignora.
 - El Vecino y el Auditor que intentan operar conservan los textos de siempre
-  (`Solo un Funcionario puede cambiar el estado` y `Solo un Funcionario puede registrar una gestión`), porque el
-  BFF y el frontend los comparan hasta que EP3-67 traiga códigos estables.
+  (`Solo un Funcionario puede cambiar el estado` y `Solo un Funcionario puede registrar una gestión`). El cambio de
+  estado agrega además un `code` estable, ver [Errores y códigos](#errores-y-códigos-ep3-67).
 
 **Endpoints**
 
@@ -544,6 +544,51 @@ request.timeout.ms`.
 2. **Duplicados posibles:** un corte o una falla de Oracle después de la confirmación reenvía el evento.
 3. **Compose:** `apps/compose*.yml` aún no pasa `KAFKA_BOOTSTRAP_SERVERS` (EP3-54); sin ella los eventos esperan en el
    outbox.
+
+## Errores y códigos (EP3-67)
+
+`RequestsExceptionHandler` escribe todos los errores con el cuerpo de Spring Boot: `timestamp`, `status`, `error`,
+`message` y `path`. Los errores del cambio de estado y de la admisión (el `GET /api/requests/{id}` previo del BFF y el
+`PUT /status`) suman `code`, un identificador que no cambia aunque cambie el texto. Los consumidores deben comparar
+`code`; `message` es para mostrar.
+
+```json
+{ "timestamp": "2026-11-15T03:04:55.136+00:00", "status": 403, "error": "Forbidden",
+  "message": "Solo el responsable del tramite puede operarlo", "path": "/api/requests/{id}/status",
+  "code": "NOT_ASSIGNEE" }
+```
+
+| HTTP | `code` | `message` |
+|---|---|---|
+| 400 | `USER_ID_REQUIRED` | `Falta identidad del usuario (header X-User-Id). Debe venir del BFF tras validar el JWT.` |
+| 403 | `ROLE_REQUIRED` | `No tienes un rol asignado en BarrioDigital` |
+| 403 | `SINGLE_ROLE_REQUIRED` | `El usuario debe tener un solo rol` |
+| 403 | `STATUS_CHANGE_FORBIDDEN` | `Solo un Funcionario puede cambiar el estado` |
+| 400 | `STATUS_REQUIRED` | `status es obligatorio` |
+| 400 | `STATUS_INVALID` | `status invalido. Valores: INGRESADO, ADMITIDO, EN_GESTION, EN_TERRENO, RESUELTO, RECHAZADO` |
+| 400 | `CANCEL_REQUIRES_CANCEL_ENDPOINT` | `La cancelacion del titular usa POST /api/requests/{id}/cancel` |
+| 400 | `REJECTION_REASON_REQUIRED` | `rejectionReason es obligatorio cuando el estado es RECHAZADO` |
+| 400 | `REJECTION_REASON_TOO_LONG` | `rejectionReason no puede superar 500 caracteres` |
+| 400 | `INTERVENTION_REASON_REQUIRED` | `interventionReason es obligatorio para el Admin` |
+| 400 | `INTERVENTION_REASON_TOO_LONG` | `interventionReason no puede superar 500 caracteres` |
+| 400 | `REQUEST_BODY_INVALID` | El de Spring: `Validation failed for object='changeStatusDto'. Error count: N` o `JSON parse error: …` |
+| 404 | `REQUEST_NOT_FOUND` | `Tramite no encontrado` |
+| 403 | `NOT_ASSIGNEE` | `Solo el responsable del tramite puede operarlo` |
+| 409 | `STATUS_TRANSITION_NOT_ALLOWED` | `No se puede pasar de {actual} a {destino}` |
+
+- **`@Size` del body responde primero.** Un `rejectionReason` o `interventionReason` de más de 500 caracteres
+  responde `REQUEST_BODY_INVALID`. `REJECTION_REASON_TOO_LONG` e `INTERVENTION_REASON_TOO_LONG` solo aparecen si el
+  servicio se llama sin pasar por el controlador.
+- **Mismo error, mismo código, en toda la API:** `USER_ID_REQUIRED`, `REQUEST_NOT_FOUND`, `ROLE_REQUIRED` y
+  `SINGLE_ROLE_REQUIRED` (todo `/api/**` salvo `/meta/**`), y `REQUEST_BODY_INVALID` en cualquier body que no pasa
+  `@Valid` o no se puede leer. `NOT_ASSIGNEE` e `INTERVENTION_REASON_*` salen también en `POST /gestiones`, que
+  aplica las mismas reglas.
+- **Sin `code`:** el resto de los errores conserva el mismo cuerpo, sin el campo.
+- **Los códigos no repiten** los de admisión del BFF (`QUOTA_EXHAUSTED` y los demás), porque el frontend los busca en
+  el mismo campo. Un código no se renombra ni se reutiliza.
+
+`RequestErrorBodyHttpTest` compara por HTTP real cada respuesta con el cuerpo que devolvía Spring Boot antes de
+EP3-67: el único campo nuevo es `code`.
 
 ## Concurrencia de estado (EP1.5-18)
 

@@ -1,8 +1,5 @@
 package cl.duoc.barriodigital.requests.web;
 
-import org.springframework.http.HttpStatus;
-import org.springframework.web.server.ResponseStatusException;
-
 import java.util.ArrayList;
 import java.util.List;
 
@@ -36,8 +33,6 @@ public record CallerContext(
     /** Los App Roles de Entra ID que reconoce BarrioDigital (EP3-04). */
     public static final List<String> ROLES = List.of(VECINO, FUNCIONARIO, ADMIN, AUDITOR);
 
-    static final String NO_ROLE = "No tienes un rol asignado en BarrioDigital";
-    static final String MANY_ROLES = "El usuario debe tener un solo rol";
     private static final String ROLE_PREFIX = "ROLE_";
 
     /** Identidad con etiqueta del tipo, sin plazo. */
@@ -93,10 +88,10 @@ public record CallerContext(
     public void requireSingleRole() {
         List<String> roles = roles();
         if (roles.isEmpty()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, NO_ROLE);
+            throw new RequestsException(RequestsErrorCode.ROLE_REQUIRED);
         }
         if (roles.size() > 1) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, MANY_ROLES);
+            throw new RequestsException(RequestsErrorCode.SINGLE_ROLE_REQUIRED);
         }
     }
 

@@ -4,10 +4,10 @@ import cl.duoc.barriodigital.requests.domain.StoredInstant;
 import cl.duoc.barriodigital.requests.domain.UserNotificationPreference;
 import cl.duoc.barriodigital.requests.persistence.UserNotificationPreferenceRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
-import org.springframework.http.HttpStatus;
+import cl.duoc.barriodigital.requests.web.RequestsErrorCode;
+import cl.duoc.barriodigital.requests.web.RequestsException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 
@@ -57,10 +57,7 @@ public class NotificationPreferenceService {
 
     private static String requireUserId(CallerContext caller) {
         if (caller == null || caller.userId() == null || caller.userId().isBlank()) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Falta identidad del usuario (header X-User-Id). Debe venir del BFF tras validar el JWT."
-            );
+            throw new RequestsException(RequestsErrorCode.USER_ID_REQUIRED);
         }
         return caller.userId().trim();
     }
