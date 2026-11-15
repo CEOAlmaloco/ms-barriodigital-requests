@@ -12,6 +12,8 @@ import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.persistence.RequestActivityAttachmentRepository;
 import cl.duoc.barriodigital.requests.persistence.RequestActivityRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
+import cl.duoc.barriodigital.requests.web.RequestsErrorCode;
+import cl.duoc.barriodigital.requests.web.RequestsException;
 import cl.duoc.barriodigital.requests.web.dto.ActividadView;
 import cl.duoc.barriodigital.requests.web.dto.ActividadView.ContactoView;
 import cl.duoc.barriodigital.requests.web.dto.ActividadView.EtapaView;
@@ -344,14 +346,14 @@ public class RequestActivityService {
 
     private MunicipalRequest locked(String requestId) {
         return requests.findByIdForUpdate(requestId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado"));
+                .orElseThrow(() -> new RequestsException(RequestsErrorCode.REQUEST_NOT_FOUND));
     }
 
     private MunicipalRequest visible(String requestId, CallerContext caller) {
         MunicipalRequest found = requests.findById(requestId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado"));
+                .orElseThrow(() -> new RequestsException(RequestsErrorCode.REQUEST_NOT_FOUND));
         if (caller.mustFilterOwnRequests() && !caller.userId().trim().equals(found.getSolicitanteId())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado");
+            throw new RequestsException(RequestsErrorCode.REQUEST_NOT_FOUND);
         }
         return found;
     }
@@ -362,10 +364,7 @@ public class RequestActivityService {
 
     private static void requireUser(CallerContext caller) {
         if (caller == null || caller.userId() == null || caller.userId().isBlank()) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Falta identidad del usuario (header X-User-Id). Debe venir del BFF tras validar el JWT."
-            );
+            throw new RequestsException(RequestsErrorCode.USER_ID_REQUIRED);
         }
     }
 }

@@ -16,6 +16,7 @@ import cl.duoc.barriodigital.requests.service.RequestService;
 import cl.duoc.barriodigital.requests.service.NotificationPreferenceService;
 import cl.duoc.barriodigital.requests.service.StaffMemberService;
 import cl.duoc.barriodigital.requests.web.RequestController;
+import cl.duoc.barriodigital.requests.web.RequestsExceptionHandler;
 import cl.duoc.barriodigital.requests.web.SingleRoleInterceptor;
 import cl.duoc.barriodigital.requests.web.StaffMemberInterceptor;
 import org.springframework.boot.SpringApplication;
@@ -32,6 +33,7 @@ import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 @EnableJpaRepositories(basePackageClasses = MunicipalRequestRepository.class)
 @Import({
         RequestController.class,
+        RequestsExceptionHandler.class,
         RequestService.class,
         RequestCreationOrchestrationService.class,
         FolioCounterService.class,

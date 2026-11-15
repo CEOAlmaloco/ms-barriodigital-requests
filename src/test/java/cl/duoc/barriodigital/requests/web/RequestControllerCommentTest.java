@@ -161,7 +161,7 @@ class RequestControllerCommentTest {
                         .header(CallerContext.HEADER_USER_ROLES, "Vecino")
                         .content("{\"text\":\"Uno mas\"}"))
                 .andExpect(status().isConflict())
-                .andExpect(status().reason("El tramite ya tiene el maximo de 20 comentarios"));
+                .andExpect(jsonPath("$.message").value("El tramite ya tiene el maximo de 20 comentarios"));
     }
 
     @Test

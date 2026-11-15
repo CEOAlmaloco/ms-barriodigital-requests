@@ -53,7 +53,8 @@ class SingleRoleInterceptorTest {
     void sinRolResponde403AntesDelCasoDeUso() throws Exception {
         mockMvc.perform(get("/api/requests").header(CallerContext.HEADER_USER_ID, "u-1"))
                 .andExpect(status().isForbidden())
-                .andExpect(status().reason("No tienes un rol asignado en BarrioDigital"));
+                .andExpect(jsonPath("$.message").value("No tienes un rol asignado en BarrioDigital"))
+                .andExpect(jsonPath("$.code").value("ROLE_REQUIRED"));
 
         verifyNoInteractions(requestService);
     }
@@ -64,7 +65,8 @@ class SingleRoleInterceptorTest {
                         .header(CallerContext.HEADER_USER_ID, "u-1")
                         .header(CallerContext.HEADER_USER_ROLES, "Funcionario,Vecino"))
                 .andExpect(status().isForbidden())
-                .andExpect(status().reason("El usuario debe tener un solo rol"));
+                .andExpect(jsonPath("$.message").value("El usuario debe tener un solo rol"))
+                .andExpect(jsonPath("$.code").value("SINGLE_ROLE_REQUIRED"));
 
         verifyNoInteractions(requestService);
     }

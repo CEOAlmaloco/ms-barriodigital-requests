@@ -10,6 +10,8 @@ import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.persistence.RequestActivityRepository;
 import cl.duoc.barriodigital.requests.persistence.StaffMemberRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
+import cl.duoc.barriodigital.requests.web.RequestsErrorCode;
+import cl.duoc.barriodigital.requests.web.RequestsException;
 import cl.duoc.barriodigital.requests.web.dto.AssignRequestDto;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -161,15 +163,12 @@ public class RequestAssignmentService {
 
     private MunicipalRequest locked(String requestId) {
         return requests.findByIdForUpdate(requestId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado"));
+                .orElseThrow(() -> new RequestsException(RequestsErrorCode.REQUEST_NOT_FOUND));
     }
 
     private static void requireUserId(CallerContext caller) {
         if (caller == null || caller.userId() == null || caller.userId().isBlank()) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Falta identidad del usuario (header X-User-Id). Debe venir del BFF tras validar el JWT."
-            );
+            throw new RequestsException(RequestsErrorCode.USER_ID_REQUIRED);
         }
     }
 }

@@ -16,6 +16,8 @@ import cl.duoc.barriodigital.requests.persistence.MunicipalRequestSpecifications
 import cl.duoc.barriodigital.requests.persistence.RequestAttachmentRepository;
 import cl.duoc.barriodigital.requests.persistence.RequestActivityRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
+import cl.duoc.barriodigital.requests.web.RequestsErrorCode;
+import cl.duoc.barriodigital.requests.web.RequestsException;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -183,7 +185,7 @@ public class RequestService {
     @Transactional(readOnly = true)
     public RequestAttachmentContent getAttachment(String id, CallerContext caller) {
         MunicipalRequest request = repository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado"));
+                .orElseThrow(() -> new RequestsException(RequestsErrorCode.REQUEST_NOT_FOUND));
         requireAttachmentAccess(request, caller);
         RequestAttachment attachment = attachments.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Imagen no encontrada"));
@@ -199,7 +201,7 @@ public class RequestService {
     public MunicipalRequest getById(String id, CallerContext caller) {
         requireUserId(caller);
         MunicipalRequest found = repository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado"));
+                .orElseThrow(() -> new RequestsException(RequestsErrorCode.REQUEST_NOT_FOUND));
 
         requireAttachmentAccess(found, caller);
         return found;
@@ -208,7 +210,7 @@ public class RequestService {
     private void requireAttachmentAccess(MunicipalRequest request, CallerContext caller) {
         requireUserId(caller);
         if (caller.mustFilterOwnRequests() && !caller.userId().trim().equals(request.getSolicitanteId())) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado");
+            throw new RequestsException(RequestsErrorCode.REQUEST_NOT_FOUND);
         }
     }
 
@@ -378,28 +380,22 @@ public class RequestService {
             CallerContext caller
     ) {
         requireUserId(caller);
-        // El texto del 403 se mantiene: el BFF y el frontend lo comparan hasta que EP3-67 traiga códigos estables.
+        // Los mensajes no cambian: el frontend todavía los muestra y el BFF los compara hasta usar code (EP3-69).
         if (!caller.isFuncionario() && !caller.isAdmin()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo un Funcionario puede cambiar el estado");
+            throw new RequestsException(RequestsErrorCode.STATUS_CHANGE_FORBIDDEN);
         }
 
         RequestStatus target = parseStatus(rawStatus);
         if (target == RequestStatus.CANCELADO) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "La cancelacion del titular usa POST /api/requests/{id}/cancel"
-            );
+            throw new RequestsException(RequestsErrorCode.CANCEL_REQUIRES_CANCEL_ENDPOINT);
         }
         if (target == RequestStatus.RECHAZADO) {
             String reason = rejectionReason == null ? "" : rejectionReason.trim();
             if (reason.isEmpty()) {
-                throw new ResponseStatusException(
-                        HttpStatus.BAD_REQUEST,
-                        "rejectionReason es obligatorio cuando el estado es RECHAZADO"
-                );
+                throw new RequestsException(RequestsErrorCode.REJECTION_REASON_REQUIRED);
             }
             if (reason.length() > 500) {
-                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "rejectionReason no puede superar 500 caracteres");
+                throw new RequestsException(RequestsErrorCode.REJECTION_REASON_TOO_LONG);
             }
             rejectionReason = reason;
         }
@@ -407,12 +403,12 @@ public class RequestService {
 
         // El bloqueo cubre lectura, validación y escritura de cualquier transición del mismo trámite.
         MunicipalRequest found = repository.findByIdForUpdate(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado"));
+                .orElseThrow(() -> new RequestsException(RequestsErrorCode.REQUEST_NOT_FOUND));
         requireResponsible(found, caller);
 
         if (!RequestTransitions.isAllowed(found.getStatus(), target)) {
-            throw new ResponseStatusException(
-                    HttpStatus.CONFLICT,
+            throw new RequestsException(
+                    RequestsErrorCode.STATUS_TRANSITION_NOT_ALLOWED,
                     "No se puede pasar de " + found.getStatus() + " a " + target
             );
         }
@@ -450,7 +446,7 @@ public class RequestService {
         }
 
         MunicipalRequest found = repository.findByIdForUpdate(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado"));
+                .orElseThrow(() -> new RequestsException(RequestsErrorCode.REQUEST_NOT_FOUND));
         if (!caller.userId().trim().equals(found.getSolicitanteId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo el titular del tramite puede cancelarlo");
         }
@@ -499,7 +495,7 @@ public class RequestService {
         }
 
         MunicipalRequest found = repository.findByIdForUpdate(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Tramite no encontrado"));
+                .orElseThrow(() -> new RequestsException(RequestsErrorCode.REQUEST_NOT_FOUND));
         if (!caller.userId().trim().equals(found.getSolicitanteId())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo el titular del tramite puede calificarlo");
         }
@@ -599,15 +595,12 @@ public class RequestService {
     /** Interpreta el estado escrito. Si no es uno de los seis, responde 400. */
     static RequestStatus parseStatus(String rawStatus) {
         if (rawStatus == null || rawStatus.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "status es obligatorio");
+            throw new RequestsException(RequestsErrorCode.STATUS_REQUIRED);
         }
         try {
             return RequestStatus.valueOf(rawStatus.trim());
         } catch (IllegalArgumentException ex) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "status invalido. Valores: INGRESADO, ADMITIDO, EN_GESTION, EN_TERRENO, RESUELTO, RECHAZADO"
-            );
+            throw new RequestsException(RequestsErrorCode.STATUS_INVALID);
         }
     }
 
@@ -637,7 +630,7 @@ public class RequestService {
      */
     static void requireResponsible(MunicipalRequest request, CallerContext caller) {
         if (caller.isFuncionario() && !caller.userId().trim().equals(request.getAssigneeId())) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Solo el responsable del tramite puede operarlo");
+            throw new RequestsException(RequestsErrorCode.NOT_ASSIGNEE);
         }
     }
 
@@ -651,10 +644,10 @@ public class RequestService {
         }
         String reason = blankToNull(raw);
         if (reason == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "interventionReason es obligatorio para el Admin");
+            throw new RequestsException(RequestsErrorCode.INTERVENTION_REASON_REQUIRED);
         }
         if (reason.length() > INTERVENTION_REASON_MAX) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "interventionReason no puede superar 500 caracteres");
+            throw new RequestsException(RequestsErrorCode.INTERVENTION_REASON_TOO_LONG);
         }
         return reason;
     }
@@ -736,10 +729,7 @@ public class RequestService {
     /** Exige el id de quien llama. Sin el header X-User-Id no continúa. */
     private static void requireUserId(CallerContext caller) {
         if (caller == null || caller.userId() == null || caller.userId().isBlank()) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Falta identidad del usuario (header X-User-Id). Debe venir del BFF tras validar el JWT."
-            );
+            throw new RequestsException(RequestsErrorCode.USER_ID_REQUIRED);
         }
     }
 }

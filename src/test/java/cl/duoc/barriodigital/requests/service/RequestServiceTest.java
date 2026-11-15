@@ -13,6 +13,8 @@ import cl.duoc.barriodigital.requests.persistence.MunicipalRequestRepository;
 import cl.duoc.barriodigital.requests.persistence.RequestAttachmentRepository;
 import cl.duoc.barriodigital.requests.persistence.RequestActivityRepository;
 import cl.duoc.barriodigital.requests.web.CallerContext;
+import cl.duoc.barriodigital.requests.web.RequestsErrorCode;
+import cl.duoc.barriodigital.requests.web.RequestsException;
 import cl.duoc.barriodigital.requests.web.dto.CreateRequestDto;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -956,6 +958,18 @@ class RequestServiceTest {
                 "id-1", "ADMITIDO", null, "x".repeat(501), new CallerContext("admin-1", "Admin")));
 
         assertEquals("interventionReason no puede superar 500 caracteres", ex.getReason());
+        assertEquals(RequestsErrorCode.INTERVENTION_REASON_TOO_LONG, ((RequestsException) ex).code());
+    }
+
+    /** Por HTTP lo responde antes el @Size del DTO; el servicio lo valida igual si se le llama directo. */
+    @Test
+    void changeStatusConMotivoDeRechazoDeMasDe500Responde400ConSuCodigo() {
+        RequestsException ex = assertThrows(RequestsException.class, () -> requestService.changeStatus(
+                "id-1", "RECHAZADO", "x".repeat(501), null, new CallerContext("func", "Funcionario")));
+
+        assertEquals(400, ex.getStatusCode().value());
+        assertEquals("rejectionReason no puede superar 500 caracteres", ex.getReason());
+        assertEquals(RequestsErrorCode.REJECTION_REASON_TOO_LONG, ex.code());
     }
 
     @Test
