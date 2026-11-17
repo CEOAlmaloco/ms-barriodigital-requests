@@ -1,6 +1,6 @@
 package cl.duoc.barriodigital.requests.domain;
 
-import cl.duoc.barriodigital.requests.service.ImageAttachmentSanitizer;
+import cl.duoc.barriodigital.requests.application.usecase.ImageAttachmentSanitizer;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;

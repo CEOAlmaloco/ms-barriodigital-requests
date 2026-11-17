@@ -1,7 +1,7 @@
 package cl.duoc.barriodigital.requests;
 
 import cl.duoc.barriodigital.requests.domain.RequestStatus;
-import cl.duoc.barriodigital.requests.service.RequestListQuery;
+import cl.duoc.barriodigital.requests.application.usecase.RequestListQuery;
 
 import java.time.LocalDate;
 
