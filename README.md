@@ -325,6 +325,15 @@ Cada toma, asignación o reasignación agrega una fila `ASIGNACION` `INTERNO` ("
 Vecino, los eventos hechos por staff llevan `actorId: null` y `actorName: "Municipalidad"`. `tiempos` calcula el
 tiempo de asignación (`primeraAsignacionSegundos`) solo para staff.
 
+### Bases existentes: `cancelado-status.sql`
+
+`ddl-auto: update` no amplía los `CHECK` de `municipal_requests.status` ni de
+`request_activity.from_status` / `to_status` que Hibernate creó sin `CANCELADO`. Sin el script, el primer
+`POST /cancel` del titular falla en Oracle con ORA-02290. Corre **una vez**, antes de probar la cancelación:
+
+1. **Revisar la vista previa** del script: muestra los `CHECK` a reemplazar (su nombre `SYS_C…` cambia en cada base).
+2. **Correr** `src/main/resources/db/cancelado-status.sql` con SQLcl, SQL*Plus o el worksheet de SQL Developer.
+
 ### Bases existentes: `assignment-request-activity.sql`
 
 `ddl-auto: update` agrega las columnas nuevas, pero no relaja el `NOT NULL` de `request_activity.actor_id` ni cambia
