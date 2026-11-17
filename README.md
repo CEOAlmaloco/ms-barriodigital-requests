@@ -104,6 +104,20 @@ Vecino: el servidor fuerza `solicitanteId = X-User-Id`. Funcionario/Admin/Audito
 Las respuestas salen como `RequestView`, armado según el rol: la entidad nunca se serializa. El Auditor recibe
 `solicitanteEmail` en `null`.
 
+### Historial, gestiones, ubicación e imagen
+
+Contrato: `barriodigital-infra/docs/decisiones.md` → «historial, gestiones, ubicación e imágenes».
+
+| Ruta | Quién | Notas |
+|------|-------|-------|
+| `GET /api/requests/{id}/actividad` | titular o personal | Historial por rol + `tiempos`; filas `INTERNO` solo staff |
+| `POST /api/requests/{id}/gestiones` | Funcionario responsable / Admin | Registra `GESTION`; nota e `interventionReason` según contrato |
+| `GET /api/requests/{id}/attachment` | titular o personal | Imagen del alta; otro Vecino → 404 |
+| Alta con `attachment` | Vecino | JPEG/PNG, ≤5 MB, ≤6000 px / 12 MP; WebP lo pasa el FE a PNG |
+| Ubicación en el alta | Vecino | `sector` de Alto Biobío; lat/lon juntas dentro de `LocationRules` |
+
+Por el API Gateway estas rutas entran por `/{proxy+}` con JWT (EP3-13).
+
 ```powershell
 # Crear (como Vecino)
 curl -X POST http://localhost:8081/api/requests `
