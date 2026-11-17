@@ -3,6 +3,7 @@ package cl.duoc.barriodigital.requests.web;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -20,6 +21,7 @@ import java.util.Map;
 /**
  * Escribe los errores con el cuerpo de Spring Boot (timestamp, status, error, message y path) y agrega code cuando
  * el error tiene uno (EP3-67). Los mensajes son los mismos que generaba Spring: el BFF y el frontend todavía los leen.
+ * Los fallos de persistencia no reenvían SQL ni ORA-* al cliente.
  */
 @RestControllerAdvice
 public class RequestsExceptionHandler {
@@ -27,6 +29,8 @@ public class RequestsExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(RequestsExceptionHandler.class);
     /** El texto de Spring Boot cuando el error no trae mensaje. */
     private static final String NO_MESSAGE = "No message available";
+    /** Mensaje genérico: include-message=always no debe filtrar el detalle de Oracle/Hibernate. */
+    static final String PERSISTENCE_FAILED = "No pudimos completar la operación. Inténtalo nuevamente.";
 
     private final Clock clock;
 
@@ -58,6 +62,13 @@ public class RequestsExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<Map<String, Object>> unreadable(HttpMessageNotReadableException ex, HttpServletRequest request) {
         return body(HttpStatus.BAD_REQUEST.value(), ex.getMessage(), request, RequestsErrorCode.REQUEST_BODY_INVALID);
+    }
+
+    /** Violación de CHECK/UK/FK u otro error de acceso a datos: log completo, mensaje genérico al cliente. */
+    @ExceptionHandler(DataAccessException.class)
+    public ResponseEntity<Map<String, Object>> dataAccess(DataAccessException ex, HttpServletRequest request) {
+        log.error("Error de persistencia en requests path={}", request.getRequestURI(), ex);
+        return body(HttpStatus.INTERNAL_SERVER_ERROR.value(), PERSISTENCE_FAILED, request, null);
     }
 
     private ResponseEntity<Map<String, Object>> body(
