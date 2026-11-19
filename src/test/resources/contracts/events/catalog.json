@@ -1,0 +1,41 @@
+{
+  "schemaVersion": 1,
+  "eventTypes": {
+    "request.created": {
+      "schemaVersion": 1,
+      "file": "request-created.schema.json"
+    },
+    "request.status-changed": {
+      "schemaVersion": 1,
+      "file": "request-status-changed.schema.json"
+    },
+    "request.cancelled": {
+      "schemaVersion": 1,
+      "file": "request-cancelled.schema.json"
+    },
+    "request.rated": {
+      "schemaVersion": 1,
+      "file": "request-rated.schema.json"
+    },
+    "request.citizen-comment": {
+      "schemaVersion": 1,
+      "file": "request-citizen-comment.schema.json"
+    },
+    "request.contact-logged": {
+      "schemaVersion": 1,
+      "file": "request-contact-logged.schema.json"
+    },
+    "request.assigned": {
+      "schemaVersion": 1,
+      "file": "request-assigned.schema.json"
+    },
+    "procedure-type.updated": {
+      "schemaVersion": 1,
+      "file": "procedure-type-updated.schema.json"
+    },
+    "queue.purged": {
+      "schemaVersion": 1,
+      "file": "queue-purged.schema.json"
+    }
+  }
+}

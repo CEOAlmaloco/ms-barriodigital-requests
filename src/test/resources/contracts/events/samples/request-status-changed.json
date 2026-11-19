@@ -1,0 +1,10 @@
+{
+  "eventId": "00000000-0000-4000-8000-000000000001",
+  "eventType": "request.status-changed",
+  "schemaVersion": 1,
+  "occurredAt": "2026-11-18T12:00:00Z",
+  "aggregateId": "agg-1",
+  "payload": {
+    "ok": true
+  }
+}
