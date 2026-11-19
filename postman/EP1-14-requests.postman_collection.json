@@ -67,6 +67,112 @@
       }
     },
     {
+      "name": "Listar (Funcionario, página, búsqueda y orden; EP3-30)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-User-Id", "value": "oid-func-prueba" },
+          { "key": "X-User-Roles", "value": "Funcionario" }
+        ],
+        "url": {
+          "raw": "http://localhost:8081/api/requests?open=true&q=bache&sector=ralco&sort=status,asc&page=0&size=20",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "requests"],
+          "query": [
+            { "key": "open", "value": "true" },
+            { "key": "q", "value": "bache" },
+            { "key": "sector", "value": "ralco" },
+            { "key": "sort", "value": "status,asc" },
+            { "key": "page", "value": "0" },
+            { "key": "size", "value": "20" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Exportar CSV (Funcionario, abiertos sin responsable; EP3-63)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-User-Id", "value": "oid-func-prueba" },
+          { "key": "X-User-Roles", "value": "Funcionario" }
+        ],
+        "url": {
+          "raw": "http://localhost:8081/api/requests/export?open=true&assignee=none",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "requests", "export"],
+          "query": [
+            { "key": "open", "value": "true" },
+            { "key": "assignee", "value": "none" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Exportar CSV (Vecino, solo los suyos; EP3-63)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-User-Id", "value": "oid-vecino-prueba" },
+          { "key": "X-User-Roles", "value": "Vecino" }
+        ],
+        "url": {
+          "raw": "http://localhost:8081/api/requests/export?open=true",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "requests", "export"],
+          "query": [
+            { "key": "open", "value": "true" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Posibles duplicados antes de crear (Vecino; EP3-75)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-User-Id", "value": "oid-vecino-prueba" },
+          { "key": "X-User-Roles", "value": "Vecino" }
+        ],
+        "url": {
+          "raw": "http://localhost:8081/api/requests/duplicates?procedureType=bache&latitude=-37.8742&longitude=-71.5915&sector=ralco",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "requests", "duplicates"],
+          "query": [
+            { "key": "procedureType", "value": "bache" },
+            { "key": "latitude", "value": "-37.8742" },
+            { "key": "longitude", "value": "-71.5915" },
+            { "key": "sector", "value": "ralco" }
+          ]
+        }
+      }
+    },
+    {
+      "name": "Posibles duplicados de un trámite (Funcionario; EP3-75)",
+      "request": {
+        "method": "GET",
+        "header": [
+          { "key": "X-User-Id", "value": "oid-func-prueba" },
+          { "key": "X-User-Roles", "value": "Funcionario" }
+        ],
+        "url": {
+          "raw": "http://localhost:8081/api/requests/{{requestId}}/duplicates",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "requests", "{{requestId}}", "duplicates"]
+        }
+      }
+    },
+    {
       "name": "Obtener por id",
       "request": {
         "method": "GET",

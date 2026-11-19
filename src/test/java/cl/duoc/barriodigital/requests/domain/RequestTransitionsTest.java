@@ -29,7 +29,8 @@ class RequestTransitionsTest {
                 RequestStatus.EN_GESTION, Set.of(RequestStatus.EN_TERRENO, RequestStatus.RECHAZADO),
                 RequestStatus.EN_TERRENO, Set.of(RequestStatus.RESUELTO, RequestStatus.RECHAZADO),
                 RequestStatus.RESUELTO, Set.of(),
-                RequestStatus.RECHAZADO, Set.of()
+                RequestStatus.RECHAZADO, Set.of(),
+                RequestStatus.CANCELADO, Set.of()
         ), transitions);
         Map<String, List<String>> names = RequestTransitions.asNamesMap();
         transitions.forEach((state, targets) -> {

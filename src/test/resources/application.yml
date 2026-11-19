@@ -8,6 +8,13 @@ server:
     include-message: always
 
 spring:
+  # outbox_events, las restricciones de EP3-64 y la secuencia del expediente las crea un script, como en Oracle:
+  # corre después de que Hibernate arma el esquema de H2.
+  jpa:
+    defer-datasource-initialization: true
+  sql:
+    init:
+      schema-locations: classpath:db/h2-outbox-events.sql,classpath:db/h2-citizen-comment.sql,classpath:db/h2-activity-sequence.sql
   rabbitmq:
     addresses: 203.0.113.1:5672
     username: barriodigital
@@ -17,8 +24,34 @@ spring:
     publisher-returns: true
     template:
       mandatory: true
+  # Copia de src/main con un broker inalcanzable.
+  kafka:
+    bootstrap-servers: 203.0.113.1:9092
+    admin:
+      auto-create: false
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
+        linger.ms: 0
 
 barriodigital:
+  kafka:
+    topic:
+      requests-events: requests.events
+  outbox:
+    scheduling:
+      enabled: false
+    relay-delay-ms: 1000
+  duplicates:
+    radius-meters: 150
+    max-results: 5
   rabbit:
     exchange:
       topic: cmd.topic

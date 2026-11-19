@@ -3,20 +3,142 @@
 
 CREATE TABLE municipal_requests (
     id              VARCHAR2(36)   PRIMARY KEY,
+    folio           VARCHAR2(14 CHAR) NOT NULL,
     title           VARCHAR2(200)  NOT NULL,
     description     VARCHAR2(2000) NOT NULL,
     procedure_type  VARCHAR2(100)  NOT NULL,
     procedure_label VARCHAR2(120),
     address         VARCHAR2(300)  NOT NULL,
+    sector          VARCHAR2(40),
+    location_reference VARCHAR2(200),
+    latitude        NUMBER,
+    longitude       NUMBER,
+    location_precision VARCHAR2(20),
     solicitante_id  VARCHAR2(64)   NOT NULL,
     solicitante_nombre VARCHAR2(200),
     solicitante_email  VARCHAR2(254),
     status          VARCHAR2(30)   NOT NULL,
     rejection_reason VARCHAR2(500),
+    has_attachment  NUMBER(1) DEFAULT 0 NOT NULL,
+    assignee_id     VARCHAR2(64),
+    assignee_name   VARCHAR2(200),
+    sla_business_days NUMBER(10),
+    satisfaction_score NUMBER(1),
+    satisfaction_comment VARCHAR2(500),
     created_at      TIMESTAMP WITH TIME ZONE NOT NULL,
-    updated_at      TIMESTAMP WITH TIME ZONE NOT NULL
+    updated_at      TIMESTAMP WITH TIME ZONE NOT NULL,
+    CONSTRAINT uk_municipal_requests_folio UNIQUE (folio)
 );
 
-CREATE INDEX idx_municipal_requests_status ON municipal_requests (status);
+-- Último número de folio entregado por año (EP3-05). Las bases con trámites anteriores usan folio-existing-requests.sql.
+CREATE TABLE folio_counter (
+    folio_year  NUMBER(4) NOT NULL,
+    last_number NUMBER    NOT NULL,
+    CONSTRAINT pk_folio_counter PRIMARY KEY (folio_year)
+);
+
+-- Preferencias de aviso por correo (EP3-65). Sin fila = email habilitado.
+CREATE TABLE user_notification_prefs (
+    user_id       VARCHAR2(64) NOT NULL,
+    email_enabled NUMBER(1) DEFAULT 1 NOT NULL,
+    updated_at    TIMESTAMP WITH TIME ZONE NOT NULL,
+    CONSTRAINT pk_user_notification_prefs PRIMARY KEY (user_id)
+);
+
+CREATE TABLE municipal_request_attachments (
+    request_id      VARCHAR2(36)  PRIMARY KEY,
+    attachment_data BLOB          NOT NULL,
+    content_type    VARCHAR2(30)  NOT NULL,
+    file_name       VARCHAR2(40)  NOT NULL,
+    created_at      TIMESTAMP WITH TIME ZONE NOT NULL,
+    CONSTRAINT fk_request_attachment_request
+        FOREIGN KEY (request_id) REFERENCES municipal_requests (id) ON DELETE CASCADE
+);
+
+-- Índices del listado (EP3-30), los mismos que declara MunicipalRequest: el del Vecino, el orden por defecto y la bandeja.
+CREATE INDEX idx_municipal_requests_solicitante_created ON municipal_requests (solicitante_id, created_at);
 CREATE INDEX idx_municipal_requests_created ON municipal_requests (created_at);
-CREATE INDEX idx_municipal_requests_solicitante ON municipal_requests (solicitante_id);
+CREATE INDEX idx_municipal_requests_assignee ON municipal_requests (assignee_id);
+
+-- Orden del expediente: lo asigna Oracle al insertar. Las bases existentes usan activity-sequence.sql.
+CREATE SEQUENCE request_activity_seq START WITH 1 INCREMENT BY 1 ORDER NOCYCLE;
+
+-- Historial del expediente. Solo se inserta. La API no actualiza ni borra filas.
+CREATE TABLE request_activity (
+    id               VARCHAR2(36)  PRIMARY KEY,
+    request_id       VARCHAR2(36)  NOT NULL,
+    activity_sequence NUMBER(19)   DEFAULT ON NULL request_activity_seq.NEXTVAL,
+    occurred_at      TIMESTAMP WITH TIME ZONE NOT NULL,
+    kind             VARCHAR2(20)  NOT NULL,
+    visibility       VARCHAR2(20)  NOT NULL,
+    actor_id         VARCHAR2(64),
+    actor_name       VARCHAR2(200),
+    actor_role       VARCHAR2(20),
+    summary          VARCHAR2(500) NOT NULL,
+    from_status      VARCHAR2(30),
+    to_status        VARCHAR2(30),
+    reason           VARCHAR2(500),
+    channel          VARCHAR2(30),
+    contact_result   VARCHAR2(40),
+    note             VARCHAR2(500),
+    next_attempt_at  TIMESTAMP WITH TIME ZONE,
+    intervention_reason    VARCHAR2(500),
+    assignee_id            VARCHAR2(64),
+    assignee_name          VARCHAR2(200),
+    previous_assignee_id   VARCHAR2(64),
+    previous_assignee_name VARCHAR2(200),
+    has_attachment         NUMBER(1) DEFAULT 0 NOT NULL,
+    CONSTRAINT ck_request_activity_kind
+        CHECK (kind IN ('CREADO', 'ESTADO', 'GESTION', 'ASIGNACION', 'CALIFICACION', 'COMENTARIO')),
+    CONSTRAINT ck_request_activity_has_attachment CHECK (has_attachment IN (0, 1)),
+    -- Destino de la FK compuesta de request_activity_attachments.
+    CONSTRAINT uk_request_activity_request UNIQUE (id, request_id),
+    CONSTRAINT uk_request_activity_sequence UNIQUE (activity_sequence),
+    -- Solo el hito público de asignación va sin actor (EP3-05). Las bases existentes usan assignment-request-activity.sql.
+    CONSTRAINT ck_request_activity_actor
+        CHECK (actor_id IS NOT NULL OR (kind = 'ASIGNACION' AND visibility = 'PUBLICO'))
+);
+
+CREATE INDEX idx_request_activity_request ON request_activity (request_id);
+
+-- Fotos de comentarios del titular. Las bases existentes usan citizen-comment.sql.
+-- La FK compuesta impide guardar la imagen con un trámite distinto al de su comentario.
+CREATE TABLE request_activity_attachments (
+    activity_id     VARCHAR2(36)  NOT NULL,
+    request_id      VARCHAR2(36)  NOT NULL,
+    attachment_data BLOB          NOT NULL,
+    content_type    VARCHAR2(30)  NOT NULL,
+    file_name       VARCHAR2(40)  NOT NULL,
+    created_at      TIMESTAMP WITH TIME ZONE NOT NULL,
+    CONSTRAINT pk_request_activity_attachments PRIMARY KEY (activity_id),
+    CONSTRAINT ck_request_activity_attachment_type CHECK (content_type IN ('image/jpeg', 'image/png')),
+    CONSTRAINT fk_request_activity_attachment_comment
+        FOREIGN KEY (activity_id, request_id) REFERENCES request_activity (id, request_id)
+);
+
+-- Outbox de eventos Kafka (EP3-02, sección 2.1). La crea db/outbox-events.sql antes del primer arranque:
+-- Hibernate no sabe crear el identity con ORDER.
+CREATE TABLE outbox_events (
+    event_id       VARCHAR2(36)  NOT NULL,
+    event_sequence NUMBER GENERATED ALWAYS AS IDENTITY (START WITH 1 INCREMENT BY 1 ORDER),
+    aggregate_id   VARCHAR2(36)  NOT NULL,
+    event_type     VARCHAR2(60)  NOT NULL,
+    payload        CLOB          NOT NULL,
+    created_at     TIMESTAMP WITH TIME ZONE NOT NULL,
+    published_at   TIMESTAMP WITH TIME ZONE,
+    attempts       NUMBER(10)    DEFAULT 0 NOT NULL,
+    last_error     VARCHAR2(500),
+    CONSTRAINT pk_outbox_events PRIMARY KEY (event_id),
+    CONSTRAINT uk_outbox_events_sequence UNIQUE (event_sequence)
+);
+
+CREATE INDEX idx_outbox_pending ON outbox_events (published_at, event_sequence);
+
+-- Personal municipal visto por requests (EP3-05, sección 5). Los vecinos no se registran.
+CREATE TABLE staff_member (
+    oid           VARCHAR2(64)  PRIMARY KEY,
+    name          VARCHAR2(200) NOT NULL,
+    role          VARCHAR2(20)  NOT NULL,
+    first_seen_at TIMESTAMP WITH TIME ZONE NOT NULL,
+    last_seen_at  TIMESTAMP WITH TIME ZONE NOT NULL
+);

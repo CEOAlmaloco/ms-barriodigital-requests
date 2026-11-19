@@ -1,0 +1,222 @@
+package cl.duoc.barriodigital.requests.adapter.in.web;
+
+import cl.duoc.barriodigital.requests.infrastructure.config.ClockConfig;
+import cl.duoc.barriodigital.requests.domain.MunicipalRequest;
+import cl.duoc.barriodigital.requests.application.usecase.ImageAttachmentSanitizer;
+import cl.duoc.barriodigital.requests.application.usecase.RequestActivityService;
+import cl.duoc.barriodigital.requests.application.usecase.RequestAssignmentService;
+import cl.duoc.barriodigital.requests.application.usecase.RequestCreationOrchestrationService;
+import cl.duoc.barriodigital.requests.application.usecase.RequestService;
+import cl.duoc.barriodigital.requests.application.usecase.NotificationPreferenceService;
+import cl.duoc.barriodigital.requests.application.usecase.StaffMemberService;
+import cl.duoc.barriodigital.requests.adapter.in.web.dto.CreateRequestDto;
+import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.context.annotation.Import;
+import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.http.MediaType;
+import org.springframework.test.web.servlet.MockMvc;
+
+import static org.hamcrest.Matchers.nullValue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@WebMvcTest(RequestController.class)
+@Import(ClockConfig.class)
+class RequestControllerCreateTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockBean
+    private RequestService requestService;
+
+    @MockBean
+    private RequestCreationOrchestrationService creation;
+
+    @MockBean
+    private RequestActivityService activityService;
+
+    @MockBean
+    private ImageAttachmentSanitizer imageSanitizer;
+
+    @MockBean
+    private StaffMemberService staffMembers;
+
+    @MockBean
+    private RequestAssignmentService assignment;
+
+    @MockBean
+    private NotificationPreferenceService notificationPreferences;
+
+    @Test
+    void postGuardaElEmailDelHeaderYLoDevuelve() throws Exception {
+        when(creation.create(any(CreateRequestDto.class), any(CallerContext.class), isNull()))
+                .thenAnswer(invocation -> {
+                    CallerContext caller = invocation.getArgument(1);
+                    return new MunicipalRequest(
+                            "t", "d", "bache", "dir", caller.userId(), "Alex", caller.userEmail()
+                    );
+                });
+
+        mockMvc.perform(post("/api/requests")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(CallerContext.HEADER_USER_ID, "oid-1")
+                        .header(CallerContext.HEADER_USER_ROLES, "Vecino")
+                        .header(CallerContext.HEADER_USER_EMAIL, "vecino@example.com")
+                        .content("{\"description\":\"Hueco\",\"procedureType\":\"bache\",\"address\":\"Calle 1\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.solicitanteEmail").value("vecino@example.com"));
+
+        ArgumentCaptor<CallerContext> caller = ArgumentCaptor.forClass(CallerContext.class);
+        verify(creation).create(any(CreateRequestDto.class), caller.capture(), isNull());
+        assertEquals("vecino@example.com", caller.getValue().userEmail());
+    }
+
+    @Test
+    void postDevuelveElFolioDelTramite() throws Exception {
+        MunicipalRequest saved = new MunicipalRequest("t", "d", "bache", "dir", "oid-1");
+        saved.assignFolio("BD-2026-000123");
+        when(creation.create(any(CreateRequestDto.class), any(CallerContext.class), isNull())).thenReturn(saved);
+
+        mockMvc.perform(post("/api/requests")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(CallerContext.HEADER_USER_ID, "oid-1")
+                        .header(CallerContext.HEADER_USER_ROLES, "Vecino")
+                        .content("{\"description\":\"Hueco\",\"procedureType\":\"bache\",\"address\":\"Calle 1\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.folio").value("BD-2026-000123"));
+    }
+
+    @Test
+    void postSinHeaderDeEmailDejaNull() throws Exception {
+        when(creation.create(any(CreateRequestDto.class), any(CallerContext.class), isNull()))
+                .thenAnswer(invocation -> {
+                    CallerContext caller = invocation.getArgument(1);
+                    return new MunicipalRequest(
+                            "t", "d", "bache", "dir", caller.userId(), "Alex", caller.userEmail()
+                    );
+                });
+
+        mockMvc.perform(post("/api/requests")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(CallerContext.HEADER_USER_ID, "oid-1")
+                        .header(CallerContext.HEADER_USER_ROLES, "Vecino")
+                        .content("{\"description\":\"Hueco\",\"procedureType\":\"bache\",\"address\":\"Calle 1\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.solicitanteEmail").value(nullValue()));
+
+        ArgumentCaptor<CallerContext> caller = ArgumentCaptor.forClass(CallerContext.class);
+        verify(creation).create(any(CreateRequestDto.class), caller.capture(), isNull());
+        assertNull(caller.getValue().userEmail());
+    }
+
+    @Test
+    void postPasaElHeaderDeLabelAlServicioYDevuelveProcedureLabel() throws Exception {
+        when(creation.create(any(CreateRequestDto.class), any(CallerContext.class), isNull()))
+                .thenReturn(new MunicipalRequest(
+                        "Alumbrado público — Calle 1", "d", "alumbrado", "Calle 1", "oid-1", "Alex", null,
+                        "Alumbrado público"
+                ));
+
+        mockMvc.perform(post("/api/requests")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(CallerContext.HEADER_USER_ID, "oid-1")
+                        .header(CallerContext.HEADER_USER_ROLES, "Vecino")
+                        .header(CallerContext.HEADER_PROCEDURE_LABEL, "Alumbrado%20p%C3%BAblico")
+                        .content("{\"description\":\"Poste\",\"procedureType\":\"alumbrado\",\"address\":\"Calle 1\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.procedureLabel").value("Alumbrado público"))
+                .andExpect(jsonPath("$.title").value("Alumbrado público — Calle 1"));
+
+        ArgumentCaptor<CallerContext> caller = ArgumentCaptor.forClass(CallerContext.class);
+        verify(creation).create(any(CreateRequestDto.class), caller.capture(), isNull());
+        assertEquals("Alumbrado%20p%C3%BAblico", caller.getValue().procedureLabel());
+    }
+
+    @Test
+    void postPasaElHeaderDePlazoAlServicio() throws Exception {
+        when(creation.create(any(CreateRequestDto.class), any(CallerContext.class), isNull()))
+                .thenReturn(new MunicipalRequest("t", "d", "bache", "dir", "oid-1", "Alex", null));
+
+        mockMvc.perform(post("/api/requests")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(CallerContext.HEADER_USER_ID, "oid-1")
+                        .header(CallerContext.HEADER_USER_ROLES, "Vecino")
+                        .header(CallerContext.HEADER_PROCEDURE_SLA_DAYS, "5")
+                        .content("{\"description\":\"Hueco\",\"procedureType\":\"bache\",\"address\":\"Calle 1\"}"))
+                .andExpect(status().isCreated());
+
+        ArgumentCaptor<CallerContext> caller = ArgumentCaptor.forClass(CallerContext.class);
+        verify(creation).create(any(CreateRequestDto.class), caller.capture(), isNull());
+        assertEquals("5", caller.getValue().procedureSlaDays());
+    }
+
+    @Test
+    void postSinHeaderDeLabelDevuelveProcedureLabelNull() throws Exception {
+        when(creation.create(any(CreateRequestDto.class), any(CallerContext.class), isNull()))
+                .thenReturn(new MunicipalRequest("t", "d", "bache", "dir", "oid-1", "Alex", null));
+
+        mockMvc.perform(post("/api/requests")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .header(CallerContext.HEADER_USER_ID, "oid-1")
+                        .header(CallerContext.HEADER_USER_ROLES, "Vecino")
+                        .content("{\"description\":\"Hueco\",\"procedureType\":\"bache\",\"address\":\"Calle 1\"}"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.procedureLabel").value(nullValue()));
+
+        ArgumentCaptor<CallerContext> caller = ArgumentCaptor.forClass(CallerContext.class);
+        verify(creation).create(any(CreateRequestDto.class), caller.capture(), isNull());
+        assertNull(caller.getValue().procedureLabel());
+    }
+
+    @Test
+    void postMultipartValidaYGuardaUnaImagenNormalizada() throws Exception {
+        var image = new ImageAttachmentSanitizer.SanitizedImage(
+                new byte[]{1, 2, 3},
+                "image/png",
+                "evidencia.png"
+        );
+        when(imageSanitizer.sanitize(any())).thenReturn(image);
+        MunicipalRequest saved = new MunicipalRequest("titulo", "descripcion", "bache", "Calle 1", "oid-1");
+        saved.setHasAttachment(true);
+        when(creation.create(any(CreateRequestDto.class), any(CallerContext.class), eq(image)))
+                .thenReturn(saved);
+
+        MockMultipartFile request = new MockMultipartFile(
+                "request",
+                "",
+                MediaType.APPLICATION_JSON_VALUE,
+                "{\"description\":\"Hueco\",\"procedureType\":\"bache\",\"address\":\"Calle 1\"}".getBytes()
+        );
+        MockMultipartFile attachment = new MockMultipartFile(
+                "attachment",
+                "original.svg",
+                "image/png",
+                new byte[]{1, 2, 3}
+        );
+
+        mockMvc.perform(multipart("/api/requests")
+                        .file(request)
+                        .file(attachment)
+                        .header(CallerContext.HEADER_USER_ID, "oid-1")
+                        .header(CallerContext.HEADER_USER_ROLES, "Vecino"))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.hasAttachment").value(true));
+
+        verify(imageSanitizer).sanitize(attachment);
+        verify(creation).create(any(CreateRequestDto.class), any(CallerContext.class), eq(image));
+    }
+}
