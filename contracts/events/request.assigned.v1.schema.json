@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "request.assigned v1",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "eventType": {
+      "const": "request.assigned"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "folio",
+        "assigneeId",
+        "assigneeName",
+        "previousAssigneeId",
+        "reason"
+      ],
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "folio": {
+          "type": "string",
+          "pattern": "^BD-\\d{4}-\\d{6}$"
+        },
+        "assigneeId": {
+          "type": "string",
+          "minLength": 1
+        },
+        "assigneeName": {
+          "type": "string",
+          "minLength": 1
+        },
+        "previousAssigneeId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "previousAssigneeId": {
+              "type": "null"
+            },
+            "reason": {
+              "type": "null"
+            }
+          }
+        },
+        {
+          "properties": {
+            "previousAssigneeId": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "unevaluatedProperties": false
+}

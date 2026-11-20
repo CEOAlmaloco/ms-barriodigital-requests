@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "request.cancelled v1",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "eventType": {
+      "const": "request.cancelled"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "folio",
+        "procedureType",
+        "sector",
+        "fromStatus",
+        "toStatus"
+      ],
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "folio": {
+          "type": "string",
+          "pattern": "^BD-\\d{4}-\\d{6}$"
+        },
+        "procedureType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fromStatus": {
+          "const": "INGRESADO"
+        },
+        "toStatus": {
+          "const": "CANCELADO"
+        }
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}

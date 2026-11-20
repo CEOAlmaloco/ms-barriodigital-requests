@@ -725,6 +725,12 @@ terminó en DLQ; la resolución repetida devolvió 409 sin nuevos efectos. Con l
 alta y resolución conservaron HTTP 201/200 y su estado persistido en menos de dos segundos, con fallos
 registrados desde los workers. Esta comprobación no valida Oracle ni el despliegue EC2.
 
+## Contratos verificables
+
+- `contracts/openapi.json`: contrato HTTP del servicio, generado desde los controladores. `OpenApiContractTest` falla si una ruta, un parámetro o un cuerpo cambia sin actualizarlo. Para regenerarlo después de revisar el cambio: `./mvnw test -Dtest=OpenApiContractTest -Dopenapi.update=true`.
+- `contracts/events/`: JSON Schema de cada `eventType` de `requests.events`, con su versión en el nombre del archivo. `EventSchemaContractTest` valida contra ellos el JSON que publica el relay. Un cambio de campos obliga a actualizar el esquema y a decidir si sube `schemaVersion` (`kafka-topicos.md`, sección 11).
+- La CI corre las pruebas, busca secretos en los commits nuevos con gitleaks y escanea la imagen con Trivy. Falla si el cambio agrega una vulnerabilidad crítica que la rama destino no tenía; las existentes quedan en el resumen del job.
+
 ## Qué sigue
 
 - Recuperación durable de los comandos de RabbitMQ: el outbox de EP3-31 cubre solo los eventos de Kafka.
