@@ -10,11 +10,9 @@ Encuesta (EP3-74): el titular califica un trámite `RESUELTO` una sola vez con `
 Preferencias de aviso (EP3-65): `GET|PUT /api/requests/me/notification-preferences` con `{ "emailEnabled": true|false }`.
 Si el titular desactiva el correo, requests no publica `email.*` a RabbitMQ; `certificate.*` y `crew.ticket` salen igual.
 
-
-<!-- EP3.5-01 contratos -->
 ## Contratos
 
-Contratos vigentes en `barriodigital-infra` (EP3.5-01). Índice: [docs/contratos](https://github.com/CEOAlmaloco/barriodigital-infra/blob/develop/docs/contratos/README.md).
+Contratos vigentes en `barriodigital-infra` ([índice](https://github.com/CEOAlmaloco/barriodigital-infra/blob/develop/docs/contratos/README.md)):
 
 - [Actividad / gestiones / adjuntos](https://github.com/CEOAlmaloco/barriodigital-infra/blob/develop/docs/contratos/requests-actividad.md)
 - [Cambio de estado](https://github.com/CEOAlmaloco/barriodigital-infra/blob/develop/docs/contratos/requests-estado.md)
@@ -125,7 +123,7 @@ Las respuestas salen como `RequestView`, armado según el rol: la entidad nunca 
 
 ### Historial, gestiones, ubicación e imagen
 
-Contrato: `barriodigital-infra/docs/contratos/README.md` → «historial, gestiones, ubicación e imágenes».
+Contrato: `barriodigital-infra/docs/contratos/requests-actividad.md`.
 
 | Ruta | Quién | Notas |
 |------|-------|-------|
@@ -226,7 +224,7 @@ Los bytes normalizados se guardan como BLOB en `municipal_request_attachments`, 
 
 ## Comentario y fotos del vecino (EP3-64)
 
-Reglas, errores y evento en el contrato EP3-64 de `barriodigital-infra/docs/contratos/README.md`.
+Reglas, errores y evento en el contrato EP3-64, `barriodigital-infra/docs/contratos/requests-comentario.md`.
 
 - `POST /api/requests/{id}/comments`: JSON `{ "text": "..." }`, o `multipart/form-data` con la parte `comment` y la
   parte opcional `attachment`, que se valida como la imagen del alta. Responde 201 con el `ActividadView`.
@@ -263,7 +261,7 @@ El Compose de infraestructura suministra las variables Rabbit y Oracle y monta e
 ## Folio (EP3-28)
 
 Cada trámite recibe en el alta un número de seguimiento `BD-AAAA-NNNNNN`, por ejemplo `BD-2026-000123`
-(contrato EP3-05 en `barriodigital-infra/docs/contratos/README.md`). Va en las respuestas de la API y en el payload
+(contrato EP3-05, `barriodigital-infra/docs/contratos/requests-folio.md`). Va en las respuestas de la API y en el payload
 de RabbitMQ.
 
 - `AAAA` es el año de `created_at` en `America/Santiago`: un alta del 31-dic a las 23:30 en Chile es de ese año.
@@ -297,7 +295,7 @@ Solo una base nueva, donde `municipal_requests` todavía no existe, se salta el 
 
 ## Asignación y operación por rol (EP3-29)
 
-Implementa los contratos EP3-04 (capacidades por rol) y EP3-05 (asignación) de `barriodigital-infra/docs/contratos/README.md`.
+Implementa los contratos EP3-04 (`capacidades-roles.md`) y EP3-05 (`requests-folio.md`) de `barriodigital-infra/docs/contratos/`.
 Las reglas viven en requests aunque el BFF también las aplique: requests no confía solo en el filtro del BFF.
 
 **Quién hace qué**
@@ -482,7 +480,7 @@ En los tests, `src/test/resources/db/h2-activity-sequence.sql` agrega la secuenc
 
 `GET /api/requests/export` entrega el listado completo en CSV, sin paginar. Acepta los mismos filtros y el mismo
 `sort` que `GET /api/requests`, con las mismas reglas y los mismos 400 y 403. `page` y `size` se ignoran. El contrato
-está en `barriodigital-infra/docs/contratos/README.md`, "Contrato: exportación CSV del listado (EP3-63)".
+está en `barriodigital-infra/docs/contratos/requests-csv.md` (EP3-63).
 
 - **Roles:** los cuatro. El Vecino exporta solo sus trámites, también al buscar o filtrar, y recibe 403 si usa
   `assignee`. Cada fila sale de `RequestView`, con la misma proyección por rol del listado: el Vecino no recibe al
@@ -515,7 +513,7 @@ personales que los necesarios.
 
 Trámites **abiertos** del **mismo tipo** dentro del radio de un punto o, en su defecto, del mismo sector. Es solo
 lectura: no escribe, no genera eventos y no bloquea el alta. El contrato está en
-`barriodigital-infra/docs/contratos/README.md`, "Contrato: aviso de posible duplicado (EP3-75)".
+`barriodigital-infra/docs/contratos/requests-duplicados.md` (EP3-75).
 
 | Ruta | Roles | Base de la búsqueda |
 |---|---|---|
@@ -555,8 +553,8 @@ lectura: no escribe, no genera eventos y no bloquea el alta. El contrato está e
 
 ## Eventos de Kafka: outbox (EP3-31)
 
-Implementa la mitad de requests de los contratos EP3-01 (eventos) y EP3-02 (publicación) de
-`barriodigital-infra/docs/contratos/README.md`. Cada hecho del trámite se guarda como una fila de `outbox_events` **en la
+Implementa la mitad de requests de los contratos EP3-01 (`kafka-topicos.md`) y EP3-02 (`kafka-publicacion.md`) de
+`barriodigital-infra/docs/contratos/`. Cada hecho del trámite se guarda como una fila de `outbox_events` **en la
 misma transacción** que el cambio y su marca del expediente: o quedan los tres, o ninguno. Un rollback, una falla al
 escribir el outbox o una transición rechazada (409) no dejan evento. El relay que publica en `requests.events` es
 EP3-32 (sección siguiente).
