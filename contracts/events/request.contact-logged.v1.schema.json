@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "request.contact-logged v1",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "eventType": {
+      "const": "request.contact-logged"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "folio",
+        "channel",
+        "result",
+        "nextAttemptAt",
+        "interventionReason"
+      ],
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "folio": {
+          "type": "string",
+          "pattern": "^BD-\\d{4}-\\d{6}$"
+        },
+        "channel": {
+          "enum": [
+            "LLAMADA",
+            "CORREO",
+            "VISITA",
+            "MENSAJE"
+          ]
+        },
+        "result": {
+          "enum": [
+            "CONTESTO",
+            "NO_CONTESTA",
+            "NUMERO_INCORRECTO",
+            "BUZON",
+            "CORREO",
+            "CONFIRMADO",
+            "VISITA_FALLIDA"
+          ]
+        },
+        "nextAttemptAt": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "date-time"
+        },
+        "interventionReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}

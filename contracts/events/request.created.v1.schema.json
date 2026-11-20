@@ -1,0 +1,101 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "request.created v1",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "eventType": {
+      "const": "request.created"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "folio",
+        "procedureType",
+        "procedureLabel",
+        "sector",
+        "latitude",
+        "longitude",
+        "status",
+        "slaBusinessDays"
+      ],
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "folio": {
+          "type": "string",
+          "pattern": "^BD-\\d{4}-\\d{6}$"
+        },
+        "procedureType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "procedureLabel": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "latitude": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "longitude": {
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "status": {
+          "const": "INGRESADO"
+        },
+        "slaBusinessDays": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1
+        }
+      },
+      "oneOf": [
+        {
+          "properties": {
+            "latitude": {
+              "type": "number"
+            },
+            "longitude": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "properties": {
+            "latitude": {
+              "type": "null"
+            },
+            "longitude": {
+              "type": "null"
+            }
+          }
+        }
+      ]
+    }
+  },
+  "unevaluatedProperties": false
+}
