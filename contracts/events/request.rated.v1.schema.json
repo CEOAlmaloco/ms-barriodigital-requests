@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "request.rated v1",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "eventType": {
+      "const": "request.rated"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "folio",
+        "score",
+        "comment"
+      ],
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "folio": {
+          "type": "string",
+          "pattern": "^BD-\\d{4}-\\d{6}$"
+        },
+        "score": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 5
+        },
+        "comment": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}

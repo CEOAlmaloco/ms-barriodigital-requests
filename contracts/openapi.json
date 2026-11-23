@@ -1,0 +1,1636 @@
+{
+  "openapi" : "3.0.1",
+  "info" : {
+    "title" : "ms-barriodigital-requests",
+    "version" : "1"
+  },
+  "paths" : {
+    "/api/requests" : {
+      "get" : {
+        "operationId" : "list",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "status",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "enum" : [ "INGRESADO", "ADMITIDO", "EN_GESTION", "EN_TERRENO", "RESUELTO", "RECHAZADO", "CANCELADO" ]
+          }
+        }, {
+          "in" : "query",
+          "name" : "from",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "in" : "query",
+          "name" : "to",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "in" : "query",
+          "name" : "assignee",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "open",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "q",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "procedureType",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "sector",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "contactDue",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "page",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "in" : "query",
+          "name" : "size",
+          "required" : false,
+          "schema" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }, {
+          "in" : "query",
+          "name" : "sort",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/PageViewRequestView"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      },
+      "post" : {
+        "operationId" : "createWithAttachment_1",
+        "parameters" : [ {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Name",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Email",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-Procedure-Label",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-Procedure-Sla-Days",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CreateRequestDto"
+              }
+            },
+            "multipart/form-data" : {
+              "schema" : {
+                "type" : "object",
+                "properties" : {
+                  "attachment" : {
+                    "type" : "string",
+                    "format" : "binary"
+                  },
+                  "request" : {
+                    "$ref" : "#/components/schemas/CreateRequestDto"
+                  }
+                },
+                "required" : [ "request" ]
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RequestView"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      }
+    },
+    "/api/requests/assignees" : {
+      "get" : {
+        "operationId" : "assignees",
+        "parameters" : [ {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/AssigneeView"
+                  }
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      }
+    },
+    "/api/requests/duplicates" : {
+      "get" : {
+        "operationId" : "forNewRequest",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "procedureType",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "latitude",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "longitude",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "sector",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/DuplicateCandidateView"
+                  }
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-duplicate-controller" ]
+      }
+    },
+    "/api/requests/export" : {
+      "get" : {
+        "operationId" : "export",
+        "parameters" : [ {
+          "in" : "query",
+          "name" : "status",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "enum" : [ "INGRESADO", "ADMITIDO", "EN_GESTION", "EN_TERRENO", "RESUELTO", "RECHAZADO", "CANCELADO" ]
+          }
+        }, {
+          "in" : "query",
+          "name" : "from",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "in" : "query",
+          "name" : "to",
+          "required" : false,
+          "schema" : {
+            "type" : "string",
+            "format" : "date"
+          }
+        }, {
+          "in" : "query",
+          "name" : "assignee",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "open",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "q",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "procedureType",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "sector",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "contactDue",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "query",
+          "name" : "sort",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "string",
+                  "format" : "byte"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-export-controller" ]
+      }
+    },
+    "/api/requests/me/notification-preferences" : {
+      "get" : {
+        "operationId" : "getNotificationPreferences",
+        "parameters" : [ {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/NotificationPreferenceDto"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      },
+      "put" : {
+        "operationId" : "putNotificationPreferences",
+        "parameters" : [ {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/NotificationPreferenceDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/NotificationPreferenceDto"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      }
+    },
+    "/api/requests/meta/procedure-types" : {
+      "get" : {
+        "deprecated" : true,
+        "operationId" : "procedureTypes",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "object",
+                  "additionalProperties" : {
+                    "type" : "string"
+                  }
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      }
+    },
+    "/api/requests/meta/transitions" : {
+      "get" : {
+        "operationId" : "transitions",
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "object",
+                  "additionalProperties" : {
+                    "type" : "array",
+                    "items" : {
+                      "type" : "string"
+                    }
+                  }
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      }
+    },
+    "/api/requests/{id}" : {
+      "get" : {
+        "operationId" : "getById",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RequestView"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      }
+    },
+    "/api/requests/{id}/actividad" : {
+      "get" : {
+        "operationId" : "actividad",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ActividadView"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      }
+    },
+    "/api/requests/{id}/assignee" : {
+      "put" : {
+        "operationId" : "assign",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Name",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/AssignRequestDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RequestView"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      }
+    },
+    "/api/requests/{id}/attachment" : {
+      "get" : {
+        "operationId" : "getAttachment",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "string",
+                  "format" : "byte"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      }
+    },
+    "/api/requests/{id}/cancel" : {
+      "post" : {
+        "operationId" : "cancel",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Name",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RequestView"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      }
+    },
+    "/api/requests/{id}/comments" : {
+      "post" : {
+        "operationId" : "commentWithAttachment_1",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Name",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/CitizenCommentDto"
+              }
+            },
+            "multipart/form-data" : {
+              "schema" : {
+                "type" : "object",
+                "properties" : {
+                  "attachment" : {
+                    "type" : "string",
+                    "format" : "binary"
+                  },
+                  "comment" : {
+                    "$ref" : "#/components/schemas/CitizenCommentDto"
+                  }
+                },
+                "required" : [ "comment" ]
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ActividadView"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      }
+    },
+    "/api/requests/{id}/comments/{commentId}/attachment" : {
+      "get" : {
+        "operationId" : "getCommentAttachment",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "path",
+          "name" : "commentId",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "string",
+                  "format" : "byte"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      }
+    },
+    "/api/requests/{id}/duplicates" : {
+      "get" : {
+        "operationId" : "forRequest",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "type" : "array",
+                  "items" : {
+                    "$ref" : "#/components/schemas/DuplicateCandidateView"
+                  }
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-duplicate-controller" ]
+      }
+    },
+    "/api/requests/{id}/gestiones" : {
+      "post" : {
+        "operationId" : "registrarGestion",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Name",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RegisterGestionDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/ActividadView"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      }
+    },
+    "/api/requests/{id}/rating" : {
+      "post" : {
+        "operationId" : "rate",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Name",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/RateRequestDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RequestView"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      }
+    },
+    "/api/requests/{id}/status" : {
+      "put" : {
+        "operationId" : "updateStatus",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Name",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "requestBody" : {
+          "content" : {
+            "application/json" : {
+              "schema" : {
+                "$ref" : "#/components/schemas/ChangeStatusDto"
+              }
+            }
+          },
+          "required" : true
+        },
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RequestView"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      }
+    },
+    "/api/requests/{id}/take" : {
+      "post" : {
+        "operationId" : "take",
+        "parameters" : [ {
+          "in" : "path",
+          "name" : "id",
+          "required" : true,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Id",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Roles",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        }, {
+          "in" : "header",
+          "name" : "X-User-Name",
+          "required" : false,
+          "schema" : {
+            "type" : "string"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "content" : {
+              "*/*" : {
+                "schema" : {
+                  "$ref" : "#/components/schemas/RequestView"
+                }
+              }
+            },
+            "description" : "OK"
+          }
+        },
+        "tags" : [ "request-controller" ]
+      }
+    }
+  },
+  "components" : {
+    "schemas" : {
+      "ActividadView" : {
+        "type" : "object",
+        "properties" : {
+          "contacto" : {
+            "$ref" : "#/components/schemas/ContactoView"
+          },
+          "eventos" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/EventoView"
+            }
+          },
+          "limites" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "requestId" : {
+            "type" : "string"
+          },
+          "tiempos" : {
+            "$ref" : "#/components/schemas/TiemposView"
+          }
+        }
+      },
+      "AssignRequestDto" : {
+        "type" : "object",
+        "properties" : {
+          "assigneeId" : {
+            "type" : "string"
+          },
+          "reason" : {
+            "maxLength" : 500,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        }
+      },
+      "AssigneeView" : {
+        "type" : "object",
+        "properties" : {
+          "id" : {
+            "type" : "string"
+          },
+          "name" : {
+            "type" : "string"
+          }
+        }
+      },
+      "ChangeStatusDto" : {
+        "type" : "object",
+        "properties" : {
+          "interventionReason" : {
+            "maxLength" : 500,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "rejectionReason" : {
+            "maxLength" : 500,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string"
+          }
+        }
+      },
+      "CitizenCommentDto" : {
+        "type" : "object",
+        "properties" : {
+          "text" : {
+            "type" : "string"
+          }
+        }
+      },
+      "ContactoView" : {
+        "type" : "object",
+        "properties" : {
+          "intentos" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "siguienteAccion" : {
+            "type" : "string"
+          },
+          "siguienteIntento" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "ultimoIntento" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "CreateRequestDto" : {
+        "required" : [ "address", "description", "procedureType" ],
+        "type" : "object",
+        "properties" : {
+          "address" : {
+            "maxLength" : 300,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "description" : {
+            "maxLength" : 2000,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "latitude" : {
+            "type" : "number",
+            "format" : "double"
+          },
+          "locationPrecision" : {
+            "maxLength" : 20,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "locationReference" : {
+            "maxLength" : 200,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "longitude" : {
+            "type" : "number",
+            "format" : "double"
+          },
+          "procedureType" : {
+            "maxLength" : 100,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "sector" : {
+            "maxLength" : 40,
+            "minLength" : 0,
+            "type" : "string"
+          }
+        }
+      },
+      "DuplicateCandidateView" : {
+        "type" : "object",
+        "properties" : {
+          "createdDate" : {
+            "type" : "string",
+            "format" : "date"
+          },
+          "distanceMeters" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "folio" : {
+            "type" : "string"
+          },
+          "hasAssignee" : {
+            "type" : "boolean"
+          },
+          "id" : {
+            "type" : "string"
+          },
+          "mine" : {
+            "type" : "boolean"
+          },
+          "procedureLabel" : {
+            "type" : "string"
+          },
+          "procedureType" : {
+            "type" : "string"
+          },
+          "sector" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string",
+            "enum" : [ "INGRESADO", "ADMITIDO", "EN_GESTION", "EN_TERRENO", "RESUELTO", "RECHAZADO", "CANCELADO" ]
+          }
+        }
+      },
+      "EtapaView" : {
+        "type" : "object",
+        "properties" : {
+          "desde" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "estado" : {
+            "type" : "string",
+            "enum" : [ "INGRESADO", "ADMITIDO", "EN_GESTION", "EN_TERRENO", "RESUELTO", "RECHAZADO", "CANCELADO" ]
+          },
+          "hasta" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "segundos" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }
+      },
+      "EventoView" : {
+        "type" : "object",
+        "properties" : {
+          "actorId" : {
+            "type" : "string"
+          },
+          "actorName" : {
+            "type" : "string"
+          },
+          "actorRole" : {
+            "type" : "string"
+          },
+          "assigneeId" : {
+            "type" : "string"
+          },
+          "assigneeName" : {
+            "type" : "string"
+          },
+          "channel" : {
+            "type" : "string",
+            "enum" : [ "LLAMADA", "CORREO", "VISITA", "MENSAJE" ]
+          },
+          "fromStatus" : {
+            "type" : "string",
+            "enum" : [ "INGRESADO", "ADMITIDO", "EN_GESTION", "EN_TERRENO", "RESUELTO", "RECHAZADO", "CANCELADO" ]
+          },
+          "hasAttachment" : {
+            "type" : "boolean"
+          },
+          "id" : {
+            "type" : "string"
+          },
+          "interventionReason" : {
+            "type" : "string"
+          },
+          "kind" : {
+            "type" : "string",
+            "enum" : [ "CREADO", "ESTADO", "GESTION", "ASIGNACION", "CALIFICACION", "COMENTARIO" ]
+          },
+          "nextAttemptAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "note" : {
+            "type" : "string"
+          },
+          "occurredAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "previousAssigneeId" : {
+            "type" : "string"
+          },
+          "previousAssigneeName" : {
+            "type" : "string"
+          },
+          "reason" : {
+            "type" : "string"
+          },
+          "result" : {
+            "type" : "string",
+            "enum" : [ "CONTESTO", "NO_CONTESTA", "NUMERO_INCORRECTO", "BUZON", "CORREO", "CONFIRMADO", "VISITA_FALLIDA" ]
+          },
+          "summary" : {
+            "type" : "string"
+          },
+          "toStatus" : {
+            "type" : "string",
+            "enum" : [ "INGRESADO", "ADMITIDO", "EN_GESTION", "EN_TERRENO", "RESUELTO", "RECHAZADO", "CANCELADO" ]
+          },
+          "visibility" : {
+            "type" : "string",
+            "enum" : [ "PUBLICO", "INTERNO" ]
+          }
+        }
+      },
+      "NotificationPreferenceDto" : {
+        "required" : [ "emailEnabled" ],
+        "type" : "object",
+        "properties" : {
+          "emailEnabled" : {
+            "type" : "boolean"
+          }
+        }
+      },
+      "PageViewRequestView" : {
+        "type" : "object",
+        "properties" : {
+          "content" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/RequestView"
+            }
+          },
+          "page" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "size" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "totalElements" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "totalPages" : {
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }
+      },
+      "RateRequestDto" : {
+        "required" : [ "score" ],
+        "type" : "object",
+        "properties" : {
+          "comment" : {
+            "maxLength" : 500,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "score" : {
+            "maximum" : 5,
+            "minimum" : 1,
+            "type" : "integer",
+            "format" : "int32"
+          }
+        }
+      },
+      "RegisterGestionDto" : {
+        "required" : [ "channel", "result" ],
+        "type" : "object",
+        "properties" : {
+          "channel" : {
+            "type" : "string",
+            "enum" : [ "LLAMADA", "CORREO", "VISITA", "MENSAJE" ]
+          },
+          "interventionReason" : {
+            "maxLength" : 500,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "nextAttemptAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "note" : {
+            "maxLength" : 500,
+            "minLength" : 0,
+            "type" : "string"
+          },
+          "result" : {
+            "type" : "string",
+            "enum" : [ "CONTESTO", "NO_CONTESTA", "NUMERO_INCORRECTO", "BUZON", "CORREO", "CONFIRMADO", "VISITA_FALLIDA" ]
+          }
+        }
+      },
+      "RequestView" : {
+        "type" : "object",
+        "properties" : {
+          "address" : {
+            "type" : "string"
+          },
+          "assigneeId" : {
+            "type" : "string"
+          },
+          "assigneeName" : {
+            "type" : "string"
+          },
+          "createdAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          },
+          "description" : {
+            "type" : "string"
+          },
+          "folio" : {
+            "type" : "string"
+          },
+          "hasAssignee" : {
+            "type" : "boolean"
+          },
+          "hasAttachment" : {
+            "type" : "boolean"
+          },
+          "id" : {
+            "type" : "string"
+          },
+          "latitude" : {
+            "type" : "number",
+            "format" : "double"
+          },
+          "locationPrecision" : {
+            "type" : "string",
+            "enum" : [ "EXACTO", "APROXIMADO" ]
+          },
+          "locationReference" : {
+            "type" : "string"
+          },
+          "longitude" : {
+            "type" : "number",
+            "format" : "double"
+          },
+          "procedureLabel" : {
+            "type" : "string"
+          },
+          "procedureType" : {
+            "type" : "string"
+          },
+          "rejectionReason" : {
+            "type" : "string"
+          },
+          "satisfactionComment" : {
+            "type" : "string"
+          },
+          "satisfactionScore" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "sector" : {
+            "type" : "string"
+          },
+          "slaBusinessDays" : {
+            "type" : "integer",
+            "format" : "int32"
+          },
+          "solicitanteEmail" : {
+            "type" : "string"
+          },
+          "solicitanteId" : {
+            "type" : "string"
+          },
+          "solicitanteNombre" : {
+            "type" : "string"
+          },
+          "status" : {
+            "type" : "string",
+            "enum" : [ "INGRESADO", "ADMITIDO", "EN_GESTION", "EN_TERRENO", "RESUELTO", "RECHAZADO", "CANCELADO" ]
+          },
+          "title" : {
+            "type" : "string"
+          },
+          "updatedAt" : {
+            "type" : "string",
+            "format" : "date-time"
+          }
+        }
+      },
+      "TiemposView" : {
+        "type" : "object",
+        "properties" : {
+          "desdeElIngresoSegundos" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "etapas" : {
+            "type" : "array",
+            "items" : {
+              "$ref" : "#/components/schemas/EtapaView"
+            }
+          },
+          "gestionMunicipalSegundos" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "noCalculado" : {
+            "type" : "array",
+            "items" : {
+              "type" : "string"
+            }
+          },
+          "primeraAsignacionSegundos" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "primeraAtencionSegundos" : {
+            "type" : "integer",
+            "format" : "int64"
+          },
+          "totalResolucionSegundos" : {
+            "type" : "integer",
+            "format" : "int64"
+          }
+        }
+      }
+    }
+  }
+}

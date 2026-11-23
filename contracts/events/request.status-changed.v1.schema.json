@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "request.status-changed v1",
+  "allOf": [
+    {
+      "$ref": "envelope.schema.json"
+    }
+  ],
+  "properties": {
+    "eventType": {
+      "const": "request.status-changed"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "payload": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestId",
+        "folio",
+        "procedureType",
+        "sector",
+        "fromStatus",
+        "toStatus",
+        "reason",
+        "interventionReason"
+      ],
+      "properties": {
+        "requestId": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "folio": {
+          "type": "string",
+          "pattern": "^BD-\\d{4}-\\d{6}$"
+        },
+        "procedureType": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sector": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "fromStatus": {
+          "enum": [
+            "INGRESADO",
+            "ADMITIDO",
+            "EN_GESTION",
+            "EN_TERRENO",
+            "RESUELTO",
+            "RECHAZADO",
+            "CANCELADO"
+          ]
+        },
+        "toStatus": {
+          "enum": [
+            "INGRESADO",
+            "ADMITIDO",
+            "EN_GESTION",
+            "EN_TERRENO",
+            "RESUELTO",
+            "RECHAZADO",
+            "CANCELADO"
+          ]
+        },
+        "reason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "interventionReason": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "if": {
+        "properties": {
+          "toStatus": {
+            "const": "RECHAZADO"
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "reason": {
+            "type": "null"
+          }
+        }
+      }
+    }
+  },
+  "unevaluatedProperties": false
+}
